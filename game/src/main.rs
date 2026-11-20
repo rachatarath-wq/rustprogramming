@@ -1,28 +1,217 @@
 use macroquad::prelude::*;
+use std::collections::HashMap;
+
+// ตำแหน่งของบล็อกในโลก = พิกัดจำนวนเต็ม (x, y, z)
+type BlockPos = (i32, i32, i32);
+
+// ชนิดของบล็อก
+#[derive(Clone, Copy, PartialEq)]
+enum Block {
+    Grass,
+    Dirt,
+    Stone,
+    Wood,
+}
+
+impl Block {
+    // สีของบล็อกแต่ละชนิด
+    fn color(&self) -> Color {
+        match self {
+            Block::Grass => Color::from_rgba(96, 190, 84, 255),
+            Block::Dirt => Color::from_rgba(143, 104, 68, 255),
+            Block::Stone => Color::from_rgba(130, 130, 134, 255),
+            Block::Wood => Color::from_rgba(145, 92, 42, 255),
+        }
+    }
+    // ชื่อสำหรับแสดงผล
+    fn name(&self) -> &str {
+        match self {
+            Block::Grass => "Grass",
+            Block::Dirt => "Dirt",
+            Block::Stone => "Stone",
+            Block::Wood => "Wood",
+        }
+    }
+}
+
+// ระยะเอื้อมมือ (กี่บล็อก)
+const REACH: f32 = 8.0;
+// ความเร็วเดิน
+const SPEED: f32 = 6.0;
+
+// สร้างโลกเริ่มต้น: พื้นหญ้า + แท่นหิน + เสาไม้
+fn build_world() -> HashMap<BlockPos, Block> {
+    let mut w = HashMap::new();
+    for x in -8..8 {
+        for z in -8..8 {
+            w.insert((x, 0, z), Block::Grass);
+        }
+    }
+    // แท่นหิน 3x3 หนึ่งชั้น
+    for x in 0..3 {
+        for z in 0..3 {
+            w.insert((x, 1, z), Block::Stone);
+        }
+    }
+    // เสาไม้สูง 3 บล็อก
+    for y in 1..4 {
+        w.insert((5, y, 5), Block::Wood);
+    }
+    w
+}
+
+// เดินทางตามแนวรังสีผ่านก้อน voxel (อัลกอริทึม Amanatides & Woo)
+// คืนค่า (พิกัดบล็อกที่ชน, เวกเตอร์ปกติของด้านที่ชน) หรือ None ถ้าไม่ชนอะไร
+fn raycast(
+    origin: Vec3,
+    dir: Vec3,
+    world: &HashMap<BlockPos, Block>,
+    max_dist: f32,
+) -> Option<(BlockPos, (i32, i32, i32))> {
+    let mut voxel = [
+        origin.x.floor() as i32,
+        origin.y.floor() as i32,
+        origin.z.floor() as i32,
+    ];
+    let step: [i32; 3] = [
+        if dir.x > 0.0 { 1 } else { -1 },
+        if dir.y > 0.0 { 1 } else { -1 },
+        if dir.z > 0.0 { 1 } else { -1 },
+    ];
+    let o = [origin.x, origin.y, origin.z];
+    let d = [dir.x, dir.y, dir.z];
+
+    let mut t_delta = [0.0f32; 3];
+    let mut t_max = [0.0f32; 3];
+    for i in 0..3 {
+        t_delta[i] = if d[i] == 0.0 { f32::MAX } else { (1.0 / d[i]).abs() };
+        let boundary = if step[i] > 0 {
+            (voxel[i] + 1) as f32
+        } else {
+            voxel[i] as f32
+        };
+        t_max[i] = if d[i] == 0.0 { f32::MAX } else { (boundary - o[i]) / d[i] };
+    }
+
+    let mut normal = (0i32, 0i32, 0i32);
+    let mut t = 0.0f32;
+    while t <= max_dist {
+        let key = (voxel[0], voxel[1], voxel[2]);
+        if world.contains_key(&key) {
+            return Some((key, normal));
+        }
+        // เดินไป voxel ถัดไปตามแกนที่ t_max น้อยที่สุด
+        if t_max[0] < t_max[1] && t_max[0] < t_max[2] {
+            voxel[0] += step[0];
+            t = t_max[0];
+            t_max[0] += t_delta[0];
+            normal = (-step[0], 0, 0);
+        } else if t_max[1] < t_max[2] {
+            voxel[1] += step[1];
+            t = t_max[1];
+            t_max[1] += t_delta[1];
+            normal = (0, -step[1], 0);
+        } else {
+            voxel[2] += step[2];
+            t = t_max[2];
+            t_max[2] += t_delta[2];
+            normal = (0, 0, -step[2]);
+        }
+    }
+    None
+}
 
 #[macroquad::main("Mini Roblox")]
 async fn main() {
-    let mut camera = Camera3D {
-        position: vec3(0.0, 2.0, 8.0),
-        target: vec3(0.0, 1.0, 0.0),
-        up: vec3(0.0, 1.0, 0.0),
-        fovy: 45.0,
-        ..Default::default()
-    };
+    let mut world = build_world();
+    let mut cam_pos = vec3(8.0, 6.0, 8.0);
+    // หันกล้องมาที่จุดกำเนิด
+    let mut yaw: f32 = -135.0_f32.to_radians();
+    let mut pitch: f32 = -25.0_f32.to_radians();
+    let mut selected = Block::Grass;
+
+    set_cursor_grab(true);
 
     loop {
+        let dt = get_frame_time();
+
+        // --- มองรอบด้วยเมาส์ ---
+        let mouse_delta = mouse_delta_position();
+        yaw -= mouse_delta.x * 0.003;
+        pitch = (pitch - mouse_delta.y * 0.003).clamp(-1.5, 1.5);
+
+        // เวกเตอร์ทิศทางที่มอง
+        let forward = vec3(
+            pitch.cos() * yaw.sin(),
+            pitch.sin(),
+            pitch.cos() * yaw.cos(),
+        )
+        .normalize();
+        let right = vec3(yaw.cos(), 0.0, -yaw.sin());
+
+        // --- เดินด้วย WASD + Space/Shift ---
+        let mut vel = Vec3::ZERO;
+        if is_key_down(KeyCode::W) { vel += forward; }
+        if is_key_down(KeyCode::S) { vel -= forward; }
+        if is_key_down(KeyCode::D) { vel += right; }
+        if is_key_down(KeyCode::A) { vel -= right; }
+        if is_key_down(KeyCode::Space) { vel += Vec3::Y; }
+        if is_key_down(KeyCode::LeftShift) { vel -= Vec3::Y; }
+        if vel != Vec3::ZERO {
+            cam_pos += vel.normalize() * SPEED * dt;
+        }
+
+        // --- เลือกชนิดบล็อกด้วยปุ่ม 1-4 ---
+        if is_key_pressed(KeyCode::Key1) { selected = Block::Grass; }
+        if is_key_pressed(KeyCode::Key2) { selected = Block::Dirt; }
+        if is_key_pressed(KeyCode::Key3) { selected = Block::Stone; }
+        if is_key_pressed(KeyCode::Key4) { selected = Block::Wood; }
+
         clear_background(SKYBLUE);
 
-        // slowly orbit the camera around the cube
-        let t = get_time() as f32;
-        camera.position = vec3(t.sin() * 8.0, 3.0, t.cos() * 8.0);
-        camera.target = vec3(0.0, 1.0, 0.0);
-
+        let camera = Camera3D {
+            position: cam_pos,
+            target: cam_pos + forward,
+            up: vec3(0.0, 1.0, 0.0),
+            fovy: 45.0,
+            ..Default::default()
+        };
         set_camera(&camera);
-        draw_grid(20, 1.0, BLACK, GRAY);
-        draw_cube(vec3(0.0, 1.0, 0.0), vec3(1.0, 1.0, 1.0), None, GREEN);
-        draw_cube(vec3(1.5, 0.5, 0.0), vec3(1.0, 1.0, 1.0), None, RED);
+
+        // วาดพื้นอ้างอิง + บล็อกทั้งหมด
+        draw_grid(20, 1.0, Color::from_rgba(0, 0, 0, 60), Color::from_rgba(200, 200, 200, 40));
+        for (pos, block) in &world {
+            let p = vec3(pos.0 as f32 + 0.5, pos.1 as f32 + 0.5, pos.2 as f32 + 0.5);
+            draw_cube(p, vec3(1.0, 1.0, 1.0), None, block.color());
+        }
+
+        // --- เล็งบล็อก: ทุบ (คลิกซ้าย) / วาง (คลิกขวา) ---
+        if let Some((hit, normal)) = raycast(cam_pos, forward, &world, REACH) {
+            let hp = vec3(hit.0 as f32 + 0.5, hit.1 as f32 + 0.5, hit.2 as f32 + 0.5);
+            draw_cube_wires(hp, vec3(1.01, 1.01, 1.01), BLACK);
+
+            if is_mouse_button_pressed(MouseButton::Left) {
+                world.remove(&hit);
+            }
+            if is_mouse_button_pressed(MouseButton::Right) {
+                let place = (hit.0 + normal.0, hit.1 + normal.1, hit.2 + normal.2);
+                // ไม่วางบล็อกทับตัวผู้เล่น
+                let player_cell = (
+                    cam_pos.x.floor() as i32,
+                    cam_pos.y.floor() as i32,
+                    cam_pos.z.floor() as i32,
+                );
+                if place != player_cell {
+                    world.insert(place, selected);
+                }
+            }
+        }
+
         set_default_camera();
+
+        // --- HUD ---
+        draw_text("Mini Roblox - LMB break, RMB place, WASD move, Space/Shift up/down", 20.0, 30.0, 26.0, WHITE);
+        draw_text(&format!("Block (1-4): {} | FPS {}", selected.name(), get_fps()), 20.0, 62.0, 26.0, WHITE);
 
         next_frame().await
     }
