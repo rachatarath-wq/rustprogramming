@@ -349,21 +349,24 @@ async fn main() {
             let skin = Color::from_rgba(230, 190, 150, 255);
             let shirt = Color::from_rgba(40, 90, 200, 255);
             let pants = Color::from_rgba(30, 45, 90, 255);
-            // วางตัวละครที่ตำแหน่งผู้เล่น + หมุนตามทิศที่มอง (yaw)
-            push_model_matrix(Mat4::from_translation(cam_pos) * Mat4::from_rotation_y(yaw));
+            // หมุนตำแหน่งชิ้นส่วนรอบแกน Y ตาม yaw (คำนวณด้วยมือ)
+            let rot = |lx: f32, ly: f32, lz: f32| vec3(
+                cam_pos.x + lx * yaw.cos() + lz * yaw.sin(),
+                cam_pos.y + ly,
+                cam_pos.z - lx * yaw.sin() + lz * yaw.cos(),
+            );
             // หัว + ดวงตา (ด้านหน้า = +Z)
-            draw_cube(vec3(0.0, 0.45, 0.0), vec3(0.4, 0.4, 0.4), None, skin);
-            draw_cube(vec3(-0.11, 0.45, 0.21), vec3(0.07, 0.07, 0.02), None, Color::from_rgba(25, 25, 25, 255));
-            draw_cube(vec3(0.11, 0.45, 0.21), vec3(0.07, 0.07, 0.02), None, Color::from_rgba(25, 25, 25, 255));
+            draw_cube(rot(0.0, 0.45, 0.0), vec3(0.4, 0.4, 0.4), None, skin);
+            draw_cube(rot(-0.11, 0.45, 0.21), vec3(0.07, 0.07, 0.02), None, Color::from_rgba(25, 25, 25, 255));
+            draw_cube(rot(0.11, 0.45, 0.21), vec3(0.07, 0.07, 0.02), None, Color::from_rgba(25, 25, 25, 255));
             // ลำตัว (เสื้อสีน้ำเงิน)
-            draw_cube(vec3(0.0, 0.05, 0.0), vec3(0.5, 0.6, 0.25), None, shirt);
+            draw_cube(rot(0.0, 0.05, 0.0), vec3(0.5, 0.6, 0.25), None, shirt);
             // แขนซ้าย-ขวา
-            draw_cube(vec3(-0.33, 0.05, 0.0), vec3(0.15, 0.6, 0.15), None, shirt);
-            draw_cube(vec3(0.33, 0.05, 0.0), vec3(0.15, 0.6, 0.15), None, shirt);
+            draw_cube(rot(-0.33, 0.05, 0.0), vec3(0.15, 0.6, 0.15), None, shirt);
+            draw_cube(rot(0.33, 0.05, 0.0), vec3(0.15, 0.6, 0.15), None, shirt);
             // ขาซ้าย-ขวา (กางเกงสีเข้ม)
-            draw_cube(vec3(-0.15, -0.5, 0.0), vec3(0.2, 0.5, 0.2), None, pants);
-            draw_cube(vec3(0.15, -0.5, 0.0), vec3(0.2, 0.5, 0.2), None, pants);
-            pop_model_matrix();
+            draw_cube(rot(-0.15, -0.5, 0.0), vec3(0.2, 0.5, 0.2), None, pants);
+            draw_cube(rot(0.15, -0.5, 0.0), vec3(0.2, 0.5, 0.2), None, pants);
         }
 
         // --- เล็งบล็อก: ทุบ (คลิกซ้าย) / วาง (คลิกขวา) ---
