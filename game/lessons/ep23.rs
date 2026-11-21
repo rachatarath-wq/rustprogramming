@@ -96,8 +96,8 @@ fn raycast(
 
 #[macroquad::main("My 3D Game")]
 async fn main() {
-    let mut world = build_world();   // mut เพราะเราทุบ/วางได้
-    let selected = Block::Stone;      // บล็อกที่จะวาง
+    let mut world = build_world();   // mut because we break/place
+    let selected = Block::Stone;      // block to place
 
     let mut pos = vec3(0.0, 2.0, 8.0);
     let mut yaw = 0.0f32;
@@ -147,11 +147,11 @@ async fn main() {
             let hp = vec3(hit.0 as f32 + 0.5, hit.1 as f32 + 0.5, hit.2 as f32 + 0.5);
             draw_cube_wires(hp, vec3(1.01, 1.01, 1.01), BLACK);
 
-            // คลิกซ้าย = ทุบบล็อก
+            // LMB = break block
             if is_mouse_button_pressed(MouseButton::Left) {
                 world.remove(&hit);
             }
-            // คลิกขวา = วางบล็อกที่ช่องติดกับด้านที่โดน
+            // RMB = place at the adjacent cell
             if is_mouse_button_pressed(MouseButton::Right) {
                 let place = (hit.0 + normal.0, hit.1 + normal.1, hit.2 + normal.2);
                 let player_cell = (

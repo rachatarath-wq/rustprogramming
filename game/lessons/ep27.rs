@@ -131,7 +131,7 @@ async fn main() {
     let mut grounded = false;
     let mut yaw = 0.0f32;
     let mut pitch = 0.0f32;
-    let mut third_person = false;   // มุมมองบุคคลที่ 3
+    let mut third_person = false;   // third-person view
 
     loop {
         let dt = get_frame_time();

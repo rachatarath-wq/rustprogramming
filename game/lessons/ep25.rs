@@ -137,8 +137,8 @@ async fn main() {
     let mut selected = Block::Stone;
 
     let mut pos = vec3(0.0, 4.0, 8.0);   // เริ่มกลางอากาศ แล้วแรงโน้มถ่วงดึงลง
-    let mut vel = Vec3::ZERO;             // ความเร็ว
-    let mut grounded = false;             // ยืนพื้นไหม
+    let mut vel = Vec3::ZERO;             // velocity
+    let mut grounded = false;             // standing on ground?
     let mut yaw = 0.0f32;
     let mut pitch = 0.0f32;
 

@@ -141,7 +141,7 @@ async fn main() {
     loop {
         let dt = get_frame_time();
 
-        // มองรอบเฉพาะเมื่อเมาส์ถูกจับ
+        // look only while mouse is grabbed
         if mouse_grabbed {
             let mouse_delta = mouse_delta_position();
             yaw -= mouse_delta.x * 0.008;
