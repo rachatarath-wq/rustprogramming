@@ -971,19 +971,10 @@ async fn main() {
             if d2 > 45.0 * 45.0 {
                 continue; // ไกลเกินหมอก ไม่ต้องวาด (ประหยัดมาก)
             }
-            // ข้ามบล็อกที่ฝังอยู่ (มีเพื่อนบ้านครบ 6 ด้าน) — วาดเฉพาะผิวที่มองเห็น
-            if world.contains_key(&(pos.0, pos.1 + 1, pos.2))
-                && world.contains_key(&(pos.0, pos.1 - 1, pos.2))
-                && world.contains_key(&(pos.0 + 1, pos.1, pos.2))
-                && world.contains_key(&(pos.0 - 1, pos.1, pos.2))
-                && world.contains_key(&(pos.0, pos.1, pos.2 + 1))
-                && world.contains_key(&(pos.0, pos.1, pos.2 - 1))
-            {
-                continue;
-            }
             let dist = d2.sqrt();
             let fog = ((dist - 20.0) / 25.0).clamp(0.0, 1.0);
             let b = (1.0 - fog) * light;
+            let color = Color::new(b, b, b, 1.0);
             let tex = match block {
                 Block::Grass => &tex_grass,
                 Block::Dirt => &tex_dirt,
@@ -994,7 +985,29 @@ async fn main() {
                 Block::Brick => &tex_brick,
                 Block::Snow => &tex_snow,
             };
-            draw_cube(p, vec3(1.0, 1.0, 1.0), Some(tex), Color::new(b, b, b, 1.0));
+            // วาดเฉพาะด้านที่ติดอากาศ (face culling) — ลดจำนวน face ที่ต้องวาดลง ~3-4 เท่า
+            let (x, y, z) = *pos;
+            let draw_face = |o: Vec3, e1: Vec3, e2: Vec3| {
+                draw_affine_parallelogram(o, e1, e2, Some(tex), color);
+            };
+            if !world.contains_key(&(x, y + 1, z)) {
+                draw_face(p + vec3(-0.5, 0.5, -0.5), vec3(1.0, 0.0, 0.0), vec3(0.0, 0.0, 1.0));
+            }
+            if !world.contains_key(&(x, y - 1, z)) {
+                draw_face(p + vec3(-0.5, -0.5, 0.5), vec3(1.0, 0.0, 0.0), vec3(0.0, 0.0, -1.0));
+            }
+            if !world.contains_key(&(x + 1, y, z)) {
+                draw_face(p + vec3(0.5, -0.5, -0.5), vec3(0.0, 1.0, 0.0), vec3(0.0, 0.0, 1.0));
+            }
+            if !world.contains_key(&(x - 1, y, z)) {
+                draw_face(p + vec3(-0.5, -0.5, 0.5), vec3(0.0, 1.0, 0.0), vec3(0.0, 0.0, -1.0));
+            }
+            if !world.contains_key(&(x, y, z + 1)) {
+                draw_face(p + vec3(-0.5, -0.5, 0.5), vec3(1.0, 0.0, 0.0), vec3(0.0, 1.0, 0.0));
+            }
+            if !world.contains_key(&(x, y, z - 1)) {
+                draw_face(p + vec3(0.5, -0.5, -0.5), vec3(-1.0, 0.0, 0.0), vec3(0.0, 1.0, 0.0));
+            }
         }
         // เงาใต้ตัวละคร (blob shadow)
         let shadow = Color::from_rgba(0, 0, 0, 90);
