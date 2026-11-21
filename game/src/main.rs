@@ -279,6 +279,21 @@ async fn main() {
     let mut dummy_hits: i32 = 0;
     let mut dummy_flash: f32 = 0.0;
     let dummy_pos = vec3(-4.0, 1.9, -3.0);
+    // ที่กำบัง (กำแพง 2 ชั้น รอบพื้นที่ 2x2 ตรงจุดเกิด) สร้างตอนเย็น
+    let mut shelter_built = false;
+    let mut shelter_idx: usize = 0;
+    let mut shelter_timer: f32 = 0.0;
+    let mut shelter_blocks: Vec<BlockPos> = Vec::new();
+    for sy in 1..=2 {
+        for sx in 3..=6 {
+            for sz in 3..=6 {
+                if sx >= 4 && sx <= 5 && sz >= 4 && sz <= 5 {
+                    continue;
+                }
+                shelter_blocks.push((sx, sy, sz));
+            }
+        }
+    }
 
     let spawn_points: [(f32, f32, f32); 4] =
         [(-7.0, 2.0, -7.0), (7.0, 2.0, 7.0), (-7.0, 2.0, 7.0), (7.0, 2.0, -7.0)];
@@ -341,22 +356,73 @@ async fn main() {
             let mut target: Option<Vec3> = None;
             let mut min_d = f32::MAX;
             let mut target_is_wolf = false;
-            for a in &apple_items {
-                if !a.taken {
-                    let d = (a.pos - cam_pos).length();
-                    if d < min_d {
-                        min_d = d;
-                        target = Some(a.pos);
-                        target_is_wolf = false;
+            if !shelter_built && !is_night && day_factor < 0.3 {
+                // ตอนเย็น: กลับไปจุดเกิดแล้วสร้างกำแพงกันหมาป่า
+                let home = vec3(4.5, cam_pos.y, 4.5);
+                let dist_home = (home - cam_pos).length();
+                if dist_home > 1.5 {
+                    target = Some(home);
+                } else {
+                    // อยู่ที่บ้านแล้ว → วางกำแพงทีละก้อน (หันหน้าไปทางก้อนที่วาง)
+                    auto_dir = Vec3::ZERO;
+                    if shelter_idx < shelter_blocks.len() {
+                        let b = shelter_blocks[shelter_idx];
+                        let bp = vec3(b.0 as f32 + 0.5, b.1 as f32 + 0.5, b.2 as f32 + 0.5);
+                        let to = bp - cam_pos;
+                        let flat = vec3(to.x, 0.0, to.z);
+                        let fl = flat.length();
+                        if fl > 0.05 {
+                            let dn = flat / fl;
+                            yaw = dn.x.atan2(dn.z);
+                            pitch = (to.y / fl).atan().clamp(-1.5, 1.5);
+                        }
+                        shelter_timer -= dt;
+                        if shelter_timer <= 0.0 {
+                            if !world.contains_key(&b) {
+                                world.insert(b, Block::Stone);
+                                play(&snd_place);
+                            }
+                            shelter_idx += 1;
+                            shelter_timer = 0.25;
+                        }
+                    } else {
+                        shelter_built = true;
                     }
                 }
-            }
-            for w in &wolves {
-                let d = (w.pos - cam_pos).length();
-                if d < min_d {
-                    min_d = d;
-                    target = Some(w.pos);
-                    target_is_wolf = true;
+            } else if is_night {
+                // กลางคืน: สู้หมาป่าที่ใกล้ ไม่งั้นรออยู่ในที่กำบัง
+                for w in &wolves {
+                    let d = (w.pos - cam_pos).length();
+                    if d < 8.0 && d < min_d {
+                        min_d = d;
+                        target = Some(w.pos);
+                        target_is_wolf = true;
+                    }
+                }
+                if target.is_none() {
+                    target = Some(vec3(4.5, cam_pos.y, 4.5));
+                }
+            } else {
+                // กลางวัน: เก็บแอปเปิ้ลใกล้สุด
+                for a in &apple_items {
+                    if !a.taken {
+                        let d = (a.pos - cam_pos).length();
+                        if d < min_d {
+                            min_d = d;
+                            target = Some(a.pos);
+                            target_is_wolf = false;
+                        }
+                    }
+                }
+                if target.is_none() {
+                    for w in &wolves {
+                        let d = (w.pos - cam_pos).length();
+                        if d < min_d {
+                            min_d = d;
+                            target = Some(w.pos);
+                            target_is_wolf = true;
+                        }
+                    }
                 }
             }
             if let Some(t) = target {
@@ -369,8 +435,8 @@ async fn main() {
                     pitch = (to.y / hd).atan().clamp(-1.5, 1.5);
                     auto_dir = dirn;
                 }
-                // หยุดเดินเมื่ออยู่ใกล้หมาป่าพอ (ยืนตี ไม่วิ่งชน)
-                if target_is_wolf && min_d < 2.0 {
+                // หยุดเดินเมื่อถึงเป้าหมาย (หมาป่าใกล้ / ถึงจุดหมาย)
+                if (target_is_wolf && min_d < 2.0) || (!target_is_wolf && min_d < 0.6) {
                     auto_dir = Vec3::ZERO;
                 }
                 // ตีหมาป่าเมื่อเข้าใกล้พอ
@@ -488,8 +554,8 @@ async fn main() {
                 hp -= dt * 2.0;
             }
         }
-        // กินแอปเปิ้ล (E)
-        if is_key_pressed(KeyCode::E) && apples > 0 {
+        // กินแอปเปิ้ล (กด E หรือ AI กินเองเมื่อหิว)
+        if apples > 0 && (is_key_pressed(KeyCode::E) || (autoplay && hunger < 55.0)) {
             apples -= 1;
             hunger = (hunger + 35.0).min(100.0);
             play(&snd_eat);
