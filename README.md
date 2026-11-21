@@ -46,9 +46,12 @@ source "$HOME/.cargo/env"
 สาเหตุ: ไม่มี C compiler
 วิธีแก้: `sudo apt install build-essential`
 
-### 4. รันเกมแล้วขึ้น `error while loading shared libraries` (libX11 / libGL / libasound)
-สาเหตุ: ขาดไลบรารีระบบสำหรับกราฟิกและเสียง
-วิธีแก้: `sudo apt install -y libx11-dev libxi-dev libgl1-mesa-dev libasound2-dev pkg-config`
+### 4. รันเกมแล้วขึ้น `error while loading shared libraries` หรือ `LibraryNotFound (libX11.so.6)`
+สาเหตุ: ขาดไลบรารีระบบสำหรับกราฟิก/เสียง (เกมต้องใช้ X11 + OpenGL + ALSA ตอนรัน)
+วิธีแก้:
+- สำหรับรัน binary สำเร็จรูป: `sudo apt install -y libx11-6 libxi6 libxrandr2 libgl1 libasound2 libxcursor1`
+- สำหรับ build เองจากโค้ด: `sudo apt install -y libx11-dev libxi-dev libgl1-mesa-dev libasound2-dev pkg-config`
+- หมายเหตุ: ต้องรันบนเครื่องที่มีหน้าจอ desktop ถ้าเป็น server ไม่มีจอจะรันไม่ได้ (ขึ้น "cannot open display")
 
 ### 5. เกมไม่เปิดหน้าต่าง (รันบน server / ไม่มีจอ)
 สาเหตุ: เกมต้องการหน้าจอ + การ์ดจอ (desktop environment)
