@@ -89,8 +89,6 @@ const JUMP_SPEED: f32 = 8.0;
 const SAVE_FILE: &str = "world.txt";
 // ความยาว 1 รอบกลางวัน+กลางคืน (วินาที)
 const DAY_LENGTH: f32 = 90.0;
-const WOLF_SPEED: f32 = 3.5;
-const MAX_WOLVES: usize = 4;
 
 fn build_world() -> HashMap<BlockPos, Block> {
     let mut w = HashMap::new();
@@ -244,13 +242,17 @@ async fn main() {
     let snd_eat = load_sound_from_bytes(include_bytes!("../assets/eat.wav")).await.ok();
     let snd_step = load_sound_from_bytes(include_bytes!("../assets/step.wav")).await.ok();
     let snd_growl = load_sound_from_bytes(include_bytes!("../assets/growl.wav")).await.ok();
+    let snd_boss_growl = load_sound_from_bytes(include_bytes!("../assets/boss_growl.wav")).await.ok();
+    let snd_boss_die = load_sound_from_bytes(include_bytes!("../assets/boss_die.wav")).await.ok();
+    let snd_oof = load_sound_from_bytes(include_bytes!("../assets/oof.wav")).await.ok();
 
     // วินิจฉัยเสียง: พิมพ์จำนวนเสียงที่โหลดได้ (ถ้า 0 = ไม่มี sound device)
-    let sound_n = [&snd_break, &snd_place, &snd_hurt, &snd_eat, &snd_step, &snd_growl]
+    let sound_n = [&snd_break, &snd_place, &snd_hurt, &snd_eat, &snd_step, &snd_growl,
+        &snd_boss_growl, &snd_boss_die, &snd_oof]
         .iter()
         .filter(|s| s.is_some())
         .count();
-    println!("เสียงโหลด {}/6{}", sound_n, if sound_n == 0 { " — ไม่มี sound device" } else { "" });
+    println!("เสียงโหลด {}/9{}", sound_n, if sound_n == 0 { " — ไม่มี sound device" } else { "" });
 
     // ข้อความไทย (render เป็น PNG ล่วงหน้าด้วย HarfBuzz shaping แล้ว)
     let thai_win_tex = Texture2D::from_file_with_format(include_bytes!("../assets/thai_win.png"), None);
@@ -326,6 +328,8 @@ async fn main() {
     let mut nights_survived: i32 = 0;   // จำนวนคืนที่รอดแล้ว
     let mut game_won = false;           // ชนะเกม (ปราบบอส)
     let mut boss_spawned = false;       // บอสเกิดแล้วหรือยัง
+    let mut sword_swing: f32 = 0.0;     // จังหวะฟันดาบ
+    let mut cam_dist: f32 = 4.0;        // ระยะกล้องบุคคลที่ 3 (ซูมด้วย scroll)
 
     set_cursor_grab(true);
 
@@ -344,6 +348,11 @@ async fn main() {
             level = (nights_survived + 1).min(3);
         }
         prev_night = is_night;
+
+        sword_swing = (sword_swing - dt).max(0.0);
+        cam_dist = (cam_dist - mouse_wheel().1 * 0.5).clamp(2.0, 10.0);
+        let max_wolves = match level { 1 => 2, 2 => 3, _ => 4 };
+        let wolf_speed = match level { 1 => 3.5, 2 => 4.0, _ => 4.5 };
 
         // --- เปิด/ปิดโหมดเล่นอัตโนมัติ (ปุ่ม P) ---
         if is_key_pressed(KeyCode::P) {
@@ -587,7 +596,7 @@ async fn main() {
         }
 
         // --- หมาป่าเกิดตอนกลางคืน ---
-        if is_night && wolves.len() < MAX_WOLVES {
+        if is_night && wolves.len() < max_wolves {
             wolf_spawn_timer -= dt;
             if wolf_spawn_timer <= 0.0 {
                 let sp = spawn_points[wolves.len()];
@@ -613,7 +622,7 @@ async fn main() {
                 grounded: false,
                 boss: true,
             });
-            play(&snd_growl);
+            play(&snd_boss_growl);
         }
 
         // อัปเดตอนุภาค (แรงโน้มถ่วง + อายุ)
@@ -629,8 +638,8 @@ async fn main() {
             let to_player = cam_pos - w.pos;
             let dist = to_player.length();
             let dir = to_player / dist.max(0.001);
-            w.vel.x = dir.x * WOLF_SPEED;
-            w.vel.z = dir.z * WOLF_SPEED;
+            w.vel.x = dir.x * wolf_speed;
+            w.vel.z = dir.z * wolf_speed;
             w.vel.y -= GRAVITY * dt;
             w.vel.y = w.vel.y.max(-30.0);
 
@@ -667,12 +676,13 @@ async fn main() {
 
         // --- ต่อสู้: คลิกซ้ายตีหมาป่า ---
         if mouse_grabbed && is_mouse_button_pressed(MouseButton::Left) {
+            sword_swing = 0.3;
             let mut hit_wolf = false;
             for w in &mut wolves {
                 let to_wolf = w.pos - cam_pos;
                 let d = to_wolf.length();
                 if d < REACH && forward.dot(to_wolf / d.max(0.001)) > 0.7 {
-                    w.hp -= 1;
+                    w.hp -= 2;   // ดาบฟันแรงกว่า
                     hit_wolf = true;
                 }
             }
@@ -680,10 +690,22 @@ async fn main() {
                 play(&snd_break);
             }
         }
+        let boss_dead_pos = wolves.iter().find(|w| w.boss && w.hp <= 0).map(|w| w.pos);
         wolves.retain(|w| w.hp > 0);
-        // บอสตาย → ชนะเกม
+        // บอสตาย → ชนะเกม + ระเบิด
         if boss_spawned && !game_won && !wolves.iter().any(|w| w.boss) {
             game_won = true;
+            play(&snd_boss_die);
+            if let Some(bp) = boss_dead_pos {
+                for _ in 0..60 {
+                    particles.push(Particle {
+                        pos: bp + vec3(0.0, 1.0, 0.0),
+                        vel: vec3(rand::gen_range(-8.0, 8.0), rand::gen_range(0.0, 10.0), rand::gen_range(-8.0, 8.0)),
+                        life: rand::gen_range(0.4, 1.2),
+                        color: Color::from_rgba(255, 140, 40, 255),
+                    });
+                }
+            }
         }
 
         // --- เก็บแอปเปิ้ล ---
@@ -702,6 +724,7 @@ async fn main() {
             cam_pos = vec3(4.0, 6.0, 4.0);
             vel = Vec3::ZERO;
             wolves.clear();
+            play(&snd_oof);
             for a in &mut apple_items {
                 a.taken = false;
             }
@@ -713,7 +736,7 @@ async fn main() {
 
         let horiz_fwd = vec3(yaw.sin(), 0.0, yaw.cos()).normalize();
         let (cam_position, cam_target) = if third_person {
-            (cam_pos - horiz_fwd * 4.0 + vec3(0.0, 0.6, 0.0), cam_pos + vec3(0.0, 0.4, 0.0))
+            (cam_pos - horiz_fwd * cam_dist + vec3(0.0, 0.6, 0.0), cam_pos + vec3(0.0, 0.4, 0.0))
         } else {
             (cam_pos, cam_pos + forward)
         };
@@ -740,6 +763,14 @@ async fn main() {
             draw_cube(p.pos, vec3(s, s, s), None, p.color);
         }
         draw_cube_wires(vec3(4.0, 3.0, 4.0), vec3(0.4, 4.0, 0.4), GOLD);
+
+        // ดาบ (tool ในมือ — กวัดแกว่งตอนฟัน)
+        if sword_swing > 0.0 {
+            let t = 1.0 - sword_swing / 0.3;
+            let blade = cam_pos + forward * (1.0 - t * 0.3) + right * (0.4 - t * 0.7) - vec3(0.0, 0.15 + t * 0.5, 0.0);
+            draw_cube(blade, vec3(0.07, 0.07, 1.1), None, Color::from_rgba(215, 215, 230, 255));
+            draw_cube(blade - forward * 0.65, vec3(0.11, 0.11, 0.28), None, Color::from_rgba(120, 70, 30, 255));
+        }
 
         // แอปเปิ้ลบนพื้น
         for a in &apple_items {
@@ -800,6 +831,8 @@ async fn main() {
             draw_cube(rot(0.0, 0.45, 0.0), vec3(0.4, 0.4, 0.4), None, skin);
             draw_cube(rot(-0.11, 0.45, 0.21), vec3(0.07, 0.07, 0.02), None, Color::from_rgba(25, 25, 25, 255));
             draw_cube(rot(0.11, 0.45, 0.21), vec3(0.07, 0.07, 0.02), None, Color::from_rgba(25, 25, 25, 255));
+            // ปากยิ้ม (สไตล์ Roblox)
+            draw_cube(rot(0.0, 0.37, 0.21), vec3(0.15, 0.03, 0.02), None, Color::from_rgba(25, 25, 25, 255));
             draw_cube(rot(0.0, 0.05, 0.0), vec3(0.5, 0.6, 0.25), None, shirt);
             draw_cube(rot(-0.33, 0.05, -swing), vec3(0.15, 0.6, 0.15), None, shirt);
             draw_cube(rot(0.33, 0.05, swing), vec3(0.15, 0.6, 0.15), None, shirt);
@@ -901,6 +934,23 @@ async fn main() {
         }
         if !mouse_grabbed {
             draw_text("Mouse released - click the window to grab again", 20.0, 140.0, 20.0, YELLOW);
+        }
+
+        // Hotbar (เลือกบล็อก 1-8 สไตล์ Roblox)
+        {
+            let slot = 52.0;
+            let gap = 8.0;
+            let total = 8.0 * slot + 7.0 * gap;
+            let x0 = screen_width() / 2.0 - total / 2.0;
+            let y0 = screen_height() - 64.0;
+            let blocks = [Block::Grass, Block::Dirt, Block::Stone, Block::Wood, Block::Sand, Block::Glass, Block::Brick, Block::Snow];
+            for (i, b) in blocks.iter().enumerate() {
+                let x = x0 + i as f32 * (slot + gap);
+                let sel = *b == selected;
+                draw_rectangle(x, y0, slot, slot, if sel { Color::from_rgba(255, 255, 255, 90) } else { Color::from_rgba(0, 0, 0, 130) });
+                draw_rectangle_lines(x, y0, slot, slot, 2.0, if sel { WHITE } else { Color::from_rgba(255, 255, 255, 60) });
+                draw_rectangle(x + 9.0, y0 + 9.0, slot - 18.0, slot - 18.0, b.color());
+            }
         }
 
         last_auto_pos = cam_pos;
