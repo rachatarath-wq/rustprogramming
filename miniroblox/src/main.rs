@@ -1024,15 +1024,16 @@ async fn main() {
             draw_circle(dot_x, dot_y, 5.0, RED);
         }
         if level_flash > 0.0 && !game_won {
-            draw_text(&format!("YOU SURVIVED! -> Level {}!", level), screen_width() / 2.0 - 250.0, 180.0, 48.0, GOLD);
-            draw_texture(&thai_win_tex, screen_width() / 2.0 - thai_win_tex.width() / 2.0, 250.0, WHITE);
+            draw_text(&format!("YOU SURVIVED! -> Level {}!", level), screen_width() / 2.0 - 240.0, 150.0, 44.0, GOLD);
+            draw_texture(&thai_win_tex, screen_width() / 2.0 - thai_win_tex.width() / 2.0, 205.0, WHITE);
         }
         if !game_won {
             let goal = if level >= 3 { "GOAL: DEFEAT THE BIG BOSS!" } else { "GOAL: SURVIVE THE NIGHT TO LEVEL UP" };
-            draw_text(goal, screen_width() / 2.0 - 300.0, 300.0, 30.0, if level >= 3 { RED } else { YELLOW });
+            draw_text(goal, screen_width() / 2.0 - 280.0, 260.0, 28.0, if level >= 3 { RED } else { YELLOW });
         }
         if game_won {
-            draw_text("YOU DEFEATED THE BOSS! YOU WIN!", screen_width() / 2.0 - 340.0, 190.0, 48.0, GOLD);
+            draw_text("YOU WIN!", screen_width() / 2.0 - 120.0, 150.0, 64.0, GOLD);
+            draw_text("You defeated the Big Boss!", screen_width() / 2.0 - 240.0, 230.0, 36.0, WHITE);
         }
         if !mouse_grabbed {
             draw_text("Mouse released - click the window to grab again", 20.0, 140.0, 20.0, YELLOW);
