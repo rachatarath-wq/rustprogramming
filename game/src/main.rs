@@ -12,6 +12,10 @@ enum Block {
     Dirt,
     Stone,
     Wood,
+    Sand,
+    Glass,
+    Brick,
+    Snow,
 }
 
 impl Block {
@@ -22,6 +26,10 @@ impl Block {
             Block::Dirt => Color::from_rgba(143, 104, 68, 255),
             Block::Stone => Color::from_rgba(130, 130, 134, 255),
             Block::Wood => Color::from_rgba(145, 92, 42, 255),
+            Block::Sand => Color::from_rgba(220, 210, 140, 255),
+            Block::Glass => Color::from_rgba(160, 210, 230, 150),
+            Block::Brick => Color::from_rgba(160, 60, 50, 255),
+            Block::Snow => Color::from_rgba(235, 240, 245, 255),
         }
     }
     // ชื่อสำหรับแสดงผล และใช้บันทึก/โหลด
@@ -31,6 +39,10 @@ impl Block {
             Block::Dirt => "Dirt",
             Block::Stone => "Stone",
             Block::Wood => "Wood",
+            Block::Sand => "Sand",
+            Block::Glass => "Glass",
+            Block::Brick => "Brick",
+            Block::Snow => "Snow",
         }
     }
     fn from_name(name: &str) -> Option<Block> {
@@ -39,6 +51,10 @@ impl Block {
             "Dirt" => Some(Block::Dirt),
             "Stone" => Some(Block::Stone),
             "Wood" => Some(Block::Wood),
+            "Sand" => Some(Block::Sand),
+            "Glass" => Some(Block::Glass),
+            "Brick" => Some(Block::Brick),
+            "Snow" => Some(Block::Snow),
             _ => None,
         }
     }
@@ -270,6 +286,10 @@ async fn main() {
         if is_key_pressed(KeyCode::Key2) { selected = Block::Dirt; }
         if is_key_pressed(KeyCode::Key3) { selected = Block::Stone; }
         if is_key_pressed(KeyCode::Key4) { selected = Block::Wood; }
+        if is_key_pressed(KeyCode::Key5) { selected = Block::Sand; }
+        if is_key_pressed(KeyCode::Key6) { selected = Block::Glass; }
+        if is_key_pressed(KeyCode::Key7) { selected = Block::Brick; }
+        if is_key_pressed(KeyCode::Key8) { selected = Block::Snow; }
         // บันทึกโลกด้วยปุ่ม R
         if is_key_pressed(KeyCode::R) {
             save_world(&world, SAVE_FILE);
@@ -319,7 +339,7 @@ async fn main() {
 
         // --- HUD ---
         draw_text("Mini Roblox - LMB break, RMB place, WASD move, Space jump, R save", 20.0, 30.0, 26.0, WHITE);
-        draw_text(&format!("Block (1-4): {} | Blocks: {} | FPS {}", selected.name(), world.len(), get_fps()), 20.0, 62.0, 26.0, WHITE);
+        draw_text(&format!("Block (1-8): {} | Blocks: {} | FPS {}", selected.name(), world.len(), get_fps()), 20.0, 62.0, 26.0, WHITE);
 
         next_frame().await
     }
