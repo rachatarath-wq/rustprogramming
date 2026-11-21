@@ -654,6 +654,27 @@ async fn main() {
             mouse_grabbed = !mouse_grabbed;
             set_cursor_grab(mouse_grabbed);
         }
+        // เริ่มเกมใหม่ (กด Enter หลังชนะ)
+        if game_won && is_key_pressed(KeyCode::Enter) {
+            world = build_world();
+            level = 1;
+            nights_survived = 0;
+            game_won = false;
+            boss_spawned = false;
+            level_flash = 0.0;
+            hp = 100.0;
+            hunger = 100.0;
+            apples = 0;
+            wolves.clear();
+            particles.clear();
+            cam_pos = vec3(4.0, 6.0, 4.0);
+            vel = Vec3::ZERO;
+            grounded = false;
+            time_of_day = 0.0;
+            for a in &mut apple_items {
+                a.taken = false;
+            }
+        }
         if is_key_pressed(KeyCode::F10) {
             break;
         }
@@ -1034,6 +1055,7 @@ async fn main() {
         if game_won {
             draw_text("YOU WIN!", screen_width() / 2.0 - 120.0, 150.0, 64.0, GOLD);
             draw_text("You defeated the Big Boss!", screen_width() / 2.0 - 240.0, 230.0, 36.0, WHITE);
+            draw_text("Press Enter to play again", screen_width() / 2.0 - 200.0, 300.0, 30.0, YELLOW);
         }
         if !mouse_grabbed {
             draw_text("Mouse released - click the window to grab again", 20.0, 140.0, 20.0, YELLOW);
