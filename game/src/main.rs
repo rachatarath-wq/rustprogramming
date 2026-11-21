@@ -355,18 +355,21 @@ async fn main() {
                 cam_pos.y + ly,
                 cam_pos.z - lx * yaw.sin() + lz * yaw.cos(),
             );
+            // เดินอยู่ไหม -> แกว่งขา/แขนตามจังหวะ (ถ้าหยุด = 0)
+            let moving = horiz != Vec3::ZERO;
+            let swing = if moving { (get_time() as f32 * 8.0).sin() * 0.25 } else { 0.0 };
             // หัว + ดวงตา (ด้านหน้า = +Z)
             draw_cube(rot(0.0, 0.45, 0.0), vec3(0.4, 0.4, 0.4), None, skin);
             draw_cube(rot(-0.11, 0.45, 0.21), vec3(0.07, 0.07, 0.02), None, Color::from_rgba(25, 25, 25, 255));
             draw_cube(rot(0.11, 0.45, 0.21), vec3(0.07, 0.07, 0.02), None, Color::from_rgba(25, 25, 25, 255));
             // ลำตัว (เสื้อสีน้ำเงิน)
             draw_cube(rot(0.0, 0.05, 0.0), vec3(0.5, 0.6, 0.25), None, shirt);
-            // แขนซ้าย-ขวา
-            draw_cube(rot(-0.33, 0.05, 0.0), vec3(0.15, 0.6, 0.15), None, shirt);
-            draw_cube(rot(0.33, 0.05, 0.0), vec3(0.15, 0.6, 0.15), None, shirt);
-            // ขาซ้าย-ขวา (กางเกงสีเข้ม)
-            draw_cube(rot(-0.15, -0.5, 0.0), vec3(0.2, 0.5, 0.2), None, pants);
-            draw_cube(rot(0.15, -0.5, 0.0), vec3(0.2, 0.5, 0.2), None, pants);
+            // แขนซ้าย-ขวา (แกว่งสวนกับขา)
+            draw_cube(rot(-0.33, 0.05, -swing), vec3(0.15, 0.6, 0.15), None, shirt);
+            draw_cube(rot(0.33, 0.05, swing), vec3(0.15, 0.6, 0.15), None, shirt);
+            // ขาซ้าย-ขวา (แกว่งสลับกัน เดิน)
+            draw_cube(rot(-0.15, -0.5, swing), vec3(0.2, 0.5, 0.2), None, pants);
+            draw_cube(rot(0.15, -0.5, -swing), vec3(0.2, 0.5, 0.2), None, pants);
         }
 
         // --- เล็งบล็อก: ทุบ (คลิกซ้าย) / วาง (คลิกขวา) ---
