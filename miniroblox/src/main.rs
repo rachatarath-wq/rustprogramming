@@ -86,87 +86,149 @@ const REACH: f32 = 8.0;
 const SPEED: f32 = 6.0;
 const GRAVITY: f32 = 22.0;
 const JUMP_SPEED: f32 = 8.0;
-const SAVE_FILE: &str = "world_v2.txt";
+const SAVE_FILE: &str = "world_v3.txt";
 // ความยาว 1 รอบกลางวัน+กลางคืน (วินาที)
 const DAY_LENGTH: f32 = 90.0;
+const WORLD_SIZE: i32 = 32;
+
+// เมล็ดภูมิประเทศ (เปลี่ยน seed -> เปลี่ยนรูปแผนที่)
+static TERRAIN_SEED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+// เครื่องสุ่มตัวเลข xorshift64 (ไม่พึ่ง crate ภายนอก)
+struct Rng {
+    s: u64,
+}
+impl Rng {
+    fn new(seed: u64) -> Self {
+        Rng { s: seed.max(1) }
+    }
+    fn next_u64(&mut self) -> u64 {
+        let mut x = self.s;
+        x ^= x << 13;
+        x ^= x >> 7;
+        x ^= x << 17;
+        self.s = x;
+        x
+    }
+    fn range(&mut self, lo: i32, hi: i32) -> i32 {
+        lo + (self.next_u64() % (hi - lo + 1) as u64) as i32
+    }
+}
+
+// ความสูงภูมิประเทศ ณ (x, z) — คลื่นซ้อนกัน + เฟสจาก seed
+fn terrain_height(x: i32, z: i32) -> i32 {
+    let s = (TERRAIN_SEED.load(std::sync::atomic::Ordering::Relaxed) % 10000) as f32 * 0.001;
+    let xf = x as f32 + s * 7.0;
+    let zf = z as f32 + s * 5.0;
+    let h = 8.0
+        + 3.0 * (xf * 0.30).sin() * (zf * 0.26).cos()
+        + 2.0 * ((xf + 1.7) * 0.13).sin() * ((zf + 0.6) * 0.19).cos()
+        + 1.5 * (xf * 0.07).sin() * (zf * 0.09).cos();
+    h.round() as i32
+}
+
+// สร้างต้นไม้ (ลำต้น + ใบ)
+fn build_tree(w: &mut HashMap<BlockPos, Block>, x: i32, y: i32, z: i32) {
+    for ty in y..y + 4 {
+        w.insert((x, ty, z), Block::Wood);
+    }
+    let top = y + 4;
+    for dx in -1..=1 {
+        for dz in -1..=1 {
+            w.insert((x + dx, top, z + dz), Block::Grass);
+        }
+    }
+}
 
 // สร้างบ้าน (พื้น + ผนัง + ช่องประตู + หลังคา)
-fn build_house(w: &mut HashMap<BlockPos, Block>, x0: i32, z0: i32, wall: Block, roof: Block) {
+fn build_house(w: &mut HashMap<BlockPos, Block>, x0: i32, base_y: i32, z0: i32, wall: Block, roof: Block) {
     let x1 = x0 + 4;
     let z1 = z0 + 4;
     for x in x0..=x1 {
         for z in z0..=z1 {
-            w.insert((x, 0, z), Block::Stone);   // พื้นบ้าน
+            w.insert((x, base_y, z), Block::Stone);   // พื้นบ้าน
             for y in 1..=2 {
                 if x == x0 || x == x1 || z == z0 || z == z1 {
                     // เว้นช่องประตู (ผนังหน้า ตรงกลาง)
                     if z == z0 && x == x0 + 2 && y == 1 {
                         continue;
                     }
-                    w.insert((x, y, z), wall);
+                    w.insert((x, base_y + y, z), wall);
                 }
             }
         }
     }
     for x in (x0 - 1)..=(x1 + 1) {
         for z in (z0 - 1)..=(z1 + 1) {
-            w.insert((x, 3, z), roof);   // หลังคา
+            w.insert((x, base_y + 3, z), roof);   // หลังคา
         }
     }
 }
 
-fn build_world() -> HashMap<BlockPos, Block> {
+fn build_world(seed: u64) -> HashMap<BlockPos, Block> {
     let mut w = HashMap::new();
-    // 1. พื้นหญ้าใหญ่ 40x40
-    for x in -20..20 {
-        for z in -20..20 {
-            w.insert((x, 0, z), Block::Grass);
-        }
-    }
-    // 2. ถนนหินตัดกัน (กว้าง 3)
-    for x in -20..20 {
-        for dz in -1..=1 {
-            w.insert((x, 0, dz), Block::Stone);
-        }
-    }
-    for z in -20..20 {
-        for dx in -1..=1 {
-            w.insert((dx, 0, z), Block::Stone);
-        }
-    }
-    // 3. ลานกลางหิน 9x9 (จุดเกิด)
-    for x in -4..=4 {
-        for z in -4..=4 {
-            w.insert((x, 0, z), Block::Stone);
-        }
-    }
-    // 4. ต้นไม้ 8 ต้น (ลำต้นไม้ + ใบ)
-    let trees = [(-12, -12), (12, -12), (-12, 12), (12, 12), (8, -16), (-8, 16), (16, 6), (-16, -6)];
-    for (tx, tz) in trees {
-        for y in 1..=4 {
-            w.insert((tx, y, tz), Block::Wood);
-        }
-        for dx in -1..=1 {
-            for dz in -1..=1 {
-                w.insert((tx + dx, 5, tz + dz), Block::Grass);
+    let mut rng = Rng::new(seed);
+    let cx = WORLD_SIZE / 2;
+
+    // 1. ภูมิประเทศ (เขา/หุบ) 32x32
+    for x in 0..WORLD_SIZE {
+        for z in 0..WORLD_SIZE {
+            let h = terrain_height(x, z);
+            for y in 0..=h {
+                let block = if y == h {
+                    Block::Grass
+                } else if y >= h - 3 {
+                    Block::Dirt
+                } else {
+                    Block::Stone
+                };
+                w.insert((x, y, z), block);
             }
         }
     }
-    // 5. บ้าน 4 หลัง (มุมเมือง)
-    build_house(&mut w, -10, -6, Block::Wood, Block::Brick);
-    build_house(&mut w, 6, -12, Block::Wood, Block::Snow);
-    build_house(&mut w, -12, 8, Block::Stone, Block::Wood);
-    build_house(&mut w, 8, 8, Block::Stone, Block::Brick);
-    // 6. เนินเขา (dirt + หญ้ายอด)
-    let hills = [(-17, -17, 3), (17, -17, 2), (17, 17, 3), (-17, 17, 2)];
-    for (hx, hz, hh) in hills {
-        for y in 1..=hh {
-            let b = if y == hh { Block::Grass } else { Block::Dirt };
-            for (dx, dz) in [(0, 0), (1, 0), (-1, 0), (0, 1), (0, -1)] {
-                w.insert((hx + dx, y, hz + dz), b);
+
+    // 2. ลานกลางหิน 5x5 (จุดเกิด + ที่กำบัง)
+    let plaza_h = terrain_height(cx, cx);
+    for x in cx - 2..=cx + 2 {
+        for z in cx - 2..=cx + 2 {
+            for y in 0..=terrain_height(x, z) {
+                w.remove(&(x, y, z));
             }
+            w.insert((x, plaza_h, z), Block::Stone);
         }
     }
+
+    // 3. ต้นไม้สุ่ม 8-12 ต้น (หลีกเลี่ยงกลาง)
+    let trees = rng.range(8, 12);
+    for _ in 0..trees {
+        let x = rng.range(3, WORLD_SIZE - 4);
+        let z = rng.range(3, WORLD_SIZE - 4);
+        if (x - cx).abs() < 5 && (z - cx).abs() < 5 {
+            continue;
+        }
+        let h = terrain_height(x, z);
+        build_tree(&mut w, x, h + 1, z);
+    }
+
+    // 4. บ้านสุ่ม 3 หลัง (ปรับพื้นให้เรียบก่อน)
+    for _ in 0..3 {
+        let x = rng.range(3, WORLD_SIZE - 8);
+        let z = rng.range(3, WORLD_SIZE - 8);
+        if (x - cx).abs() < 7 && (z - cx).abs() < 7 {
+            continue;
+        }
+        let base = terrain_height(x, z);
+        for hx in x - 1..=x + 5 {
+            for hz in z - 1..=z + 5 {
+                for y in 0..=terrain_height(hx, hz).max(base + 3) {
+                    w.remove(&(hx, y, hz));
+                }
+                w.insert((hx, base, hz), Block::Stone);
+            }
+        }
+        build_house(&mut w, x, base, z, Block::Wood, Block::Brick);
+    }
+
     w
 }
 
@@ -330,14 +392,25 @@ async fn main() {
     let tex_snow = Texture2D::from_file_with_format(include_bytes!("../assets/tex_snow.png"), None);
 
     // --- โลก ---
+    // แผนที่สุ่ม (seed จากเวลาปัจจุบัน -> ทุกครั้งที่เปิดเกมได้แผนที่ใหม่)
+    let mut seed: u64 = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos() as u64;
+    TERRAIN_SEED.store(seed, std::sync::atomic::Ordering::Relaxed);
     let mut world = load_world(SAVE_FILE);
     if world.is_empty() {
-        world = build_world();
+        world = build_world(seed);
     }
-    println!("โลก {} บล็อก (บ้าน/ต้นไม้อยู่รอบเมือง)", world.len());
+    println!("โลก {} บล็อก (สุ่ม seed {})", world.len(), seed);
+
+    // จุดเกิด (กลางแผนที่ บนลานหิน)
+    let cx = WORLD_SIZE / 2;
+    let mut plaza_h = terrain_height(cx, cx);
+    let mut spawn_pos = vec3(cx as f32 + 0.5, plaza_h as f32 + 2.0, cx as f32 + 0.5);
 
     // --- ผู้เล่น ---
-    let mut cam_pos = vec3(4.0, 6.0, 4.0);
+    let mut cam_pos = spawn_pos;
     let mut vel = vec3(0.0, 0.0, 0.0);
     let mut grounded = false;
     let mut third_person = true;
@@ -367,33 +440,40 @@ async fn main() {
     let mut practice = false;
     let mut dummy_hits: i32 = 0;
     let mut dummy_flash: f32 = 0.0;
-    let dummy_pos = vec3(-4.0, 1.9, -3.0);
+    let dummy_pos = vec3(cx as f32 - 1.0, plaza_h as f32 + 1.9, cx as f32 + 2.0);
     // ที่กำบัง (กำแพง 2 ชั้น รอบพื้นที่ 2x2 ตรงจุดเกิด) สร้างตอนเย็น
     let mut shelter_built = false;
     let mut shelter_idx: usize = 0;
     let mut shelter_timer: f32 = 0.0;
     let mut shelter_blocks: Vec<BlockPos> = Vec::new();
     for sy in 1..=2 {
-        for sx in 3..=6 {
-            for sz in 3..=6 {
-                if sx >= 4 && sx <= 5 && sz >= 4 && sz <= 5 {
+        for sx in cx - 1..=cx + 2 {
+            for sz in cx - 1..=cx + 2 {
+                if sx >= cx && sx <= cx + 1 && sz >= cx && sz <= cx + 1 {
                     continue;
                 }
-                shelter_blocks.push((sx, sy, sz));
+                shelter_blocks.push((sx, plaza_h + sy, sz));
             }
         }
     }
 
-    let spawn_points: [(f32, f32, f32); 4] =
-        [(-15.0, 2.0, -15.0), (15.0, 2.0, 15.0), (-15.0, 2.0, 15.0), (15.0, 2.0, -15.0)];
-    let mut apple_items: Vec<Apple> = vec![
-        Apple { pos: vec3(5.0, 1.2, -6.0), taken: false },
-        Apple { pos: vec3(-6.0, 1.2, 5.0), taken: false },
-        Apple { pos: vec3(10.0, 1.2, -10.0), taken: false },
-        Apple { pos: vec3(-10.0, 1.2, 10.0), taken: false },
-        Apple { pos: vec3(14.0, 1.2, -3.0), taken: false },
-        Apple { pos: vec3(-14.0, 1.2, 3.0), taken: false },
+    // จุดเกิดหมาป่า (มุมแผนที่)
+    let e = WORLD_SIZE - 2;
+    let mut spawn_points: [(f32, f32, f32); 4] = [
+        (2.0, terrain_height(2, 2) as f32 + 2.0, 2.0),
+        (e as f32, terrain_height(e, e) as f32 + 2.0, e as f32),
+        (2.0, terrain_height(2, e) as f32 + 2.0, e as f32),
+        (e as f32, terrain_height(e, 2) as f32 + 2.0, 2.0),
     ];
+    // แอปเปิ้ลสุ่ม 8 ลูกบนพื้น
+    let mut arng = Rng::new(seed ^ 0x9E3779B97F4A7C15);
+    let mut apple_items: Vec<Apple> = Vec::new();
+    for _ in 0..8 {
+        let ax = arng.range(3, WORLD_SIZE - 4);
+        let az = arng.range(3, WORLD_SIZE - 4);
+        let ay = terrain_height(ax, az) as f32 + 1.2;
+        apple_items.push(Apple { pos: vec3(ax as f32, ay, az as f32), taken: false });
+    }
 
     // --- ระบบอนุภาค + ระดับชั้น + บอส ---
     let mut particles: Vec<Particle> = Vec::new();
@@ -643,7 +723,7 @@ async fn main() {
             save_world(&world, SAVE_FILE);
         }
         if is_key_pressed(KeyCode::T) {
-            cam_pos = vec3(4.0, 6.0, 4.0);
+            cam_pos = spawn_pos;
             vel = Vec3::ZERO;
             grounded = false;
         }
@@ -654,9 +734,41 @@ async fn main() {
             mouse_grabbed = !mouse_grabbed;
             set_cursor_grab(mouse_grabbed);
         }
-        // เริ่มเกมใหม่ (กด Enter หลังชนะ)
+        // เริ่มเกมใหม่ (กด Enter หลังชนะ) -> สุ่มแผนที่ใหม่
         if game_won && is_key_pressed(KeyCode::Enter) {
-            world = build_world();
+            seed = seed.wrapping_add(0x9E3779B97F4A7C15);
+            TERRAIN_SEED.store(seed, std::sync::atomic::Ordering::Relaxed);
+            world = build_world(seed);
+            plaza_h = terrain_height(cx, cx);
+            spawn_pos = vec3(cx as f32 + 0.5, plaza_h as f32 + 2.0, cx as f32 + 0.5);
+            // ที่กำบังใหม่รอบจุดเกิด
+            shelter_blocks.clear();
+            for sy in 1..=2 {
+                for sx in cx - 1..=cx + 2 {
+                    for sz in cx - 1..=cx + 2 {
+                        if sx >= cx && sx <= cx + 1 && sz >= cx && sz <= cx + 1 {
+                            continue;
+                        }
+                        shelter_blocks.push((sx, plaza_h + sy, sz));
+                    }
+                }
+            }
+            // จุดเกิดหมาป่าใหม่
+            spawn_points = [
+                (2.0, terrain_height(2, 2) as f32 + 2.0, 2.0),
+                (e as f32, terrain_height(e, e) as f32 + 2.0, e as f32),
+                (2.0, terrain_height(2, e) as f32 + 2.0, e as f32),
+                (e as f32, terrain_height(e, 2) as f32 + 2.0, 2.0),
+            ];
+            // แอปเปิ้ลใหม่
+            let mut arng = Rng::new(seed ^ 0x9E3779B97F4A7C15);
+            apple_items.clear();
+            for _ in 0..8 {
+                let ax = arng.range(3, WORLD_SIZE - 4);
+                let az = arng.range(3, WORLD_SIZE - 4);
+                let ay = terrain_height(ax, az) as f32 + 1.2;
+                apple_items.push(Apple { pos: vec3(ax as f32, ay, az as f32), taken: false });
+            }
             level = 1;
             nights_survived = 0;
             game_won = false;
@@ -667,13 +779,10 @@ async fn main() {
             apples = 0;
             wolves.clear();
             particles.clear();
-            cam_pos = vec3(4.0, 6.0, 4.0);
+            cam_pos = spawn_pos;
             vel = Vec3::ZERO;
             grounded = false;
             time_of_day = 0.0;
-            for a in &mut apple_items {
-                a.taken = false;
-            }
         }
         if is_key_pressed(KeyCode::F10) {
             break;
@@ -819,7 +928,7 @@ async fn main() {
         if hp <= 0.0 {
             hp = 100.0;
             hunger = 100.0;
-            cam_pos = vec3(4.0, 6.0, 4.0);
+            cam_pos = spawn_pos;
             vel = Vec3::ZERO;
             wolves.clear();
             play(&snd_oof);
