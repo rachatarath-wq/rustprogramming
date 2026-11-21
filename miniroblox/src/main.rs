@@ -86,7 +86,7 @@ const REACH: f32 = 8.0;
 const SPEED: f32 = 6.0;
 const GRAVITY: f32 = 22.0;
 const JUMP_SPEED: f32 = 8.0;
-const SAVE_FILE: &str = "world.txt";
+const SAVE_FILE: &str = "world_v2.txt";
 // ความยาว 1 รอบกลางวัน+กลางคืน (วินาที)
 const DAY_LENGTH: f32 = 90.0;
 
@@ -325,6 +325,7 @@ async fn main() {
     if world.is_empty() {
         world = build_world();
     }
+    println!("โลก {} บล็อก (บ้าน/ต้นไม้อยู่รอบเมือง)", world.len());
 
     // --- ผู้เล่น ---
     let mut cam_pos = vec3(4.0, 6.0, 4.0);
