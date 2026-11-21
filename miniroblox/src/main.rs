@@ -349,8 +349,7 @@ async fn main() {
     // โหมดเล่นอัตโนมัติ (AI เล่นให้ดู)
     let mut autoplay = false;
     let mut auto_attack_cd: f32 = 0.0;
-    // ชนะเมื่อรอดกลางคืน + ตรวจจับการติดขัดของ AI
-    let mut survived = false;
+    // ตรวจจับการติดขัดของ AI
     let mut prev_night = false;
     let mut stuck_timer: f32 = 0.0;
     let mut last_auto_pos = cam_pos;
@@ -409,7 +408,6 @@ async fn main() {
         let is_night = if practice { false } else { day_factor < -0.2 };
         // รอดกลางคืน (กลางคืน → กลางวัน) = ผ่าน 1 คืน → เลื่อนระดับ
         if !is_night && prev_night && !game_won {
-            survived = true;
             nights_survived += 1;
             let new_level = (nights_survived + 1).min(3);
             if new_level > level {
@@ -435,7 +433,6 @@ async fn main() {
             if practice {
                 wolves.clear();
                 dummy_hits = 0;
-                survived = false;
             }
         }
 
@@ -993,12 +990,9 @@ async fn main() {
             let dot_y = radar_cy - rel_angle.cos() * 35.0;
             draw_circle(dot_x, dot_y, 5.0, RED);
         }
-        if level_flash > 0.0 {
-            draw_text(&format!("LEVEL UP! -> Level {}!", level), screen_width() / 2.0 - 220.0, 160.0, 50.0, GOLD);
-        }
-        if survived && !game_won {
-            draw_text("YOU SURVIVED THE NIGHT!", screen_width() / 2.0 - 250.0, 190.0, 44.0, GOLD);
-            draw_texture(&thai_win_tex, screen_width() / 2.0 - thai_win_tex.width() / 2.0, 252.0, WHITE);
+        if level_flash > 0.0 && !game_won {
+            draw_text(&format!("YOU SURVIVED! -> Level {}!", level), screen_width() / 2.0 - 250.0, 180.0, 48.0, GOLD);
+            draw_texture(&thai_win_tex, screen_width() / 2.0 - thai_win_tex.width() / 2.0, 250.0, WHITE);
         }
         if !game_won {
             let goal = if level >= 3 { "GOAL: DEFEAT THE BIG BOSS!" } else { "GOAL: SURVIVE THE NIGHT TO LEVEL UP" };
