@@ -254,7 +254,7 @@ async fn main() {
     let mut mouse_grabbed = true;
     let mut yaw: f32 = -135.0_f32.to_radians();
     let mut pitch: f32 = -25.0_f32.to_radians();
-    let mut selected = Block::Grass;
+    let mut selected = Block::Stone;
 
     // --- สถานะ survival ---
     let mut time_of_day: f32 = 0.0; // เริ่มตอนเที่ยง (กลางวัน มีเวลาเก็บแอปเปิ้ลก่อนมืด)
