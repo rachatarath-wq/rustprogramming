@@ -48,6 +48,10 @@ impl Block {
 const REACH: f32 = 8.0;
 // ความเร็วเดิน
 const SPEED: f32 = 6.0;
+// แรงโน้มถ่วง (บล็อก/วินาที²)
+const GRAVITY: f32 = 22.0;
+// แรงกระโดด (บล็อก/วินาที)
+const JUMP_SPEED: f32 = 8.0;
 // ไฟล์สำหรับบันทึกโลก
 const SAVE_FILE: &str = "world.txt";
 
@@ -166,6 +170,22 @@ fn raycast(
     None
 }
 
+// ตรวจว่าตัวผู้เล่น (AABB) ทับบล็อกใดในโลกหรือไม่
+fn player_collides(pos: Vec3, world: &HashMap<BlockPos, Block>) -> bool {
+    let min = pos - vec3(0.3, 0.85, 0.3);
+    let max = pos + vec3(0.3, 0.85, 0.3);
+    for x in (min.x.floor() as i32)..=(max.x.floor() as i32) {
+        for y in (min.y.floor() as i32)..=(max.y.floor() as i32) {
+            for z in (min.z.floor() as i32)..=(max.z.floor() as i32) {
+                if world.contains_key(&(x, y, z)) {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
 #[macroquad::main("Mini Roblox")]
 async fn main() {
     // โหลดโลกจากไฟล์ก่อน ถ้าไม่มีก็สร้างโลกเริ่มต้น
@@ -174,7 +194,9 @@ async fn main() {
         world = build_world();
     }
 
-    let mut cam_pos = vec3(8.0, 6.0, 8.0);
+    let mut cam_pos = vec3(4.0, 6.0, 4.0);
+    let mut vel = vec3(0.0, 0.0, 0.0);
+    let mut grounded = false;
     // หันกล้องมาที่จุดกำเนิด
     let mut yaw: f32 = -135.0_f32.to_radians();
     let mut pitch: f32 = -25.0_f32.to_radians();
@@ -199,16 +221,48 @@ async fn main() {
         .normalize();
         let right = vec3(yaw.cos(), 0.0, -yaw.sin());
 
-        // --- เดินด้วย WASD + Space/Shift ---
-        let mut vel = Vec3::ZERO;
-        if is_key_down(KeyCode::W) { vel += forward; }
-        if is_key_down(KeyCode::S) { vel -= forward; }
-        if is_key_down(KeyCode::D) { vel += right; }
-        if is_key_down(KeyCode::A) { vel -= right; }
-        if is_key_down(KeyCode::Space) { vel += Vec3::Y; }
-        if is_key_down(KeyCode::LeftShift) { vel -= Vec3::Y; }
-        if vel != Vec3::ZERO {
-            cam_pos += vel.normalize() * SPEED * dt;
+        // --- เดินด้วย WASD (แนวนอน) ---
+        let mut horiz = Vec3::ZERO;
+        if is_key_down(KeyCode::W) { horiz += forward; }
+        if is_key_down(KeyCode::S) { horiz -= forward; }
+        if is_key_down(KeyCode::D) { horiz += right; }
+        if is_key_down(KeyCode::A) { horiz -= right; }
+        if horiz != Vec3::ZERO {
+            horiz = horiz.normalize() * SPEED;
+        }
+        vel.x = horiz.x;
+        vel.z = horiz.z;
+
+        // แรงโน้มถ่วง
+        vel.y -= GRAVITY * dt;
+        vel.y = vel.y.max(-30.0);
+
+        // กระโดด (เฉพาะตอนยืนบนพื้น)
+        if is_key_pressed(KeyCode::Space) && grounded {
+            vel.y = JUMP_SPEED;
+            grounded = false;
+        }
+
+        // ขยับทีละแกน + กันชนบล็อก
+        let nx = cam_pos.x + vel.x * dt;
+        if !player_collides(vec3(nx, cam_pos.y, cam_pos.z), &world) {
+            cam_pos.x = nx;
+        } else {
+            vel.x = 0.0;
+        }
+        let ny = cam_pos.y + vel.y * dt;
+        if !player_collides(vec3(cam_pos.x, ny, cam_pos.z), &world) {
+            cam_pos.y = ny;
+            grounded = false;
+        } else {
+            if vel.y < 0.0 { grounded = true; }
+            vel.y = 0.0;
+        }
+        let nz = cam_pos.z + vel.z * dt;
+        if !player_collides(vec3(cam_pos.x, cam_pos.y, nz), &world) {
+            cam_pos.z = nz;
+        } else {
+            vel.z = 0.0;
         }
 
         // --- เลือกชนิดบล็อกด้วยปุ่ม 1-4 ---
@@ -264,7 +318,7 @@ async fn main() {
         set_default_camera();
 
         // --- HUD ---
-        draw_text("Mini Roblox - LMB break, RMB place, WASD move, R save", 20.0, 30.0, 26.0, WHITE);
+        draw_text("Mini Roblox - LMB break, RMB place, WASD move, Space jump, R save", 20.0, 30.0, 26.0, WHITE);
         draw_text(&format!("Block (1-4): {} | Blocks: {} | FPS {}", selected.name(), world.len(), get_fps()), 20.0, 62.0, 26.0, WHITE);
 
         next_frame().await
