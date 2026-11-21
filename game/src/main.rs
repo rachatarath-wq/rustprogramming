@@ -549,8 +549,9 @@ async fn main() {
         let sky = lerp_color(Color::from_rgba(20, 25, 50, 255), SKYBLUE, 1.0 - nightness);
         clear_background(sky);
 
+        let horiz_fwd = vec3(yaw.sin(), 0.0, yaw.cos()).normalize();
         let (cam_position, cam_target) = if third_person {
-            (cam_pos - forward * 4.0 + vec3(0.0, 1.2, 0.0), cam_pos + vec3(0.0, 0.2, 0.0))
+            (cam_pos - horiz_fwd * 4.0 + vec3(0.0, 0.6, 0.0), cam_pos + vec3(0.0, 0.4, 0.0))
         } else {
             (cam_pos, cam_pos + forward)
         };
