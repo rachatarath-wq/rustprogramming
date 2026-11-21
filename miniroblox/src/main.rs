@@ -357,8 +357,28 @@ fn play(s: &Option<Sound>) {
     }
 }
 
+fn draw_loading(progress: f32, label: &str) {
+    clear_background(Color::from_rgba(12, 16, 32, 255));
+    let w = screen_width();
+    let h = screen_height();
+    let bar_w = 420.0;
+    let bar_h = 22.0;
+    let x = w / 2.0 - bar_w / 2.0;
+    let y = h / 2.0;
+    draw_text("Mini Roblox - Loading...", x, y - 52.0, 30.0, WHITE);
+    draw_rectangle(x, y, bar_w, bar_h, Color::from_rgba(255, 255, 255, 40));
+    draw_rectangle(x, y, bar_w * progress.clamp(0.0, 1.0), bar_h, Color::from_rgba(80, 200, 120, 255));
+    draw_text(label, x, y + bar_h + 16.0, 20.0, Color::from_rgba(210, 210, 210, 255));
+}
+
 #[macroquad::main("Mini Roblox")]
 async fn main() {
+    let t0 = std::time::Instant::now();
+    // หน้าจอโหลดทันที — กันจอดำระหว่างโหลด assets
+    draw_loading(0.05, "Loading sounds...");
+    next_frame().await;
+    eprintln!("[load] window ok +{:.1}s, loading sounds...", t0.elapsed().as_secs_f32());
+
     // --- โหลดเสียง (ถ้าโหลดไม่ได้ก็เล่นแบบเงียบ) ---
     let snd_break = load_sound_from_bytes(include_bytes!("../assets/break.wav")).await.ok();
     let snd_place = load_sound_from_bytes(include_bytes!("../assets/place.wav")).await.ok();
@@ -376,7 +396,9 @@ async fn main() {
         .iter()
         .filter(|s| s.is_some())
         .count();
-    println!("เสียงโหลด {}/9{}", sound_n, if sound_n == 0 { " — ไม่มี sound device" } else { "" });
+    println!("เสียงโหลด {}/9{} +{:.1}s", sound_n, if sound_n == 0 { " — ไม่มี sound device" } else { "" }, t0.elapsed().as_secs_f32());
+    draw_loading(0.3, "Loading textures...");
+    next_frame().await;
 
     // ข้อความไทย (render เป็น PNG ล่วงหน้าด้วย HarfBuzz shaping แล้ว)
     let thai_win_tex = Texture2D::from_file_with_format(include_bytes!("../assets/thai_win.png"), None);
@@ -390,6 +412,8 @@ async fn main() {
     let tex_glass = Texture2D::from_file_with_format(include_bytes!("../assets/tex_glass.png"), None);
     let tex_brick = Texture2D::from_file_with_format(include_bytes!("../assets/tex_brick.png"), None);
     let tex_snow = Texture2D::from_file_with_format(include_bytes!("../assets/tex_snow.png"), None);
+    draw_loading(0.55, "Building world...");
+    next_frame().await;
 
     // --- โลก ---
     // แผนที่สุ่ม (seed จากเวลาปัจจุบัน -> ทุกครั้งที่เปิดเกมได้แผนที่ใหม่)
@@ -402,7 +426,25 @@ async fn main() {
     if world.is_empty() {
         world = build_world(seed);
     }
-    println!("โลก {} บล็อก (สุ่ม seed {})", world.len(), seed);
+    println!("โลก {} บล็อก (สุ่ม seed {}) +{:.1}s", world.len(), seed, t0.elapsed().as_secs_f32());
+
+    // วอร์ม shader/ไปป์ไลน์ทั้งหมดล่วงหน้า — compile ตอนจอโหลด ไม่ให้เฟรมแรกค้าง
+    // (สำคัญมากบนเครื่องที่ render ด้วย software/llvmpipe: JIT ครั้งแรกนานมาก)
+    draw_loading(0.75, "Compiling shaders...");
+    next_frame().await;
+    let warm_tex = Texture2D::from_file_with_format(include_bytes!("../assets/tex_grass.png"), None);
+    // วอร์มทุกไปป์ไลน์ที่เกมใช้: 3D มี/ไม่มี texture, ทรงกลม, เส้น, รูป 2D, ตัวอักษร
+    draw_cube(vec3(0.0, 0.0, -3.0), vec3(1.0, 1.0, 1.0), Some(&warm_tex), WHITE);
+    draw_cube(vec3(2.0, 0.0, -3.0), vec3(1.0, 1.0, 1.0), None, WHITE);
+    draw_sphere(vec3(4.0, 0.0, -3.0), 0.5, None, WHITE);
+    draw_grid(2, 1.0, WHITE, WHITE);
+    draw_rectangle(10.0, 10.0, 8.0, 8.0, WHITE);
+    draw_circle(30.0, 30.0, 4.0, WHITE);
+    draw_text("warmup", 50.0, 30.0, 16.0, WHITE);
+    next_frame().await;
+    eprintln!("[load] shaders warmed +{:.1}s", t0.elapsed().as_secs_f32());
+    draw_loading(0.92, "Rendering first frame...");
+    next_frame().await;
 
     // จุดเกิด (กลางแผนที่ บนลานหิน)
     let cx = WORLD_SIZE / 2;
@@ -486,6 +528,7 @@ async fn main() {
     let mut cam_dist: f32 = 4.0;        // ระยะกล้องบุคคลที่ 3 (ซูมด้วย scroll)
 
     set_cursor_grab(true);
+    let mut first_frame = true;
 
     loop {
         let dt = get_frame_time();
@@ -1216,6 +1259,11 @@ async fn main() {
 
         last_auto_pos = cam_pos;
         was_auto_moving = auto_dir != Vec3::ZERO;
+
+        if first_frame {
+            first_frame = false;
+            eprintln!("[game] first frame rendered +{:.1}s", t0.elapsed().as_secs_f32());
+        }
 
         next_frame().await
     }
