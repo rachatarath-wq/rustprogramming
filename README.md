@@ -23,4 +23,33 @@ cd game
 cargo run
 ```
 
-การควบคุม: WASD เดิน, Space/Shift ขึ้น-ลง, เมาส์มองรอบ, คลิกซ้ายทุบบล็อก, คลิกขวาวางบล็อก, ปุ่ม 1-4 เลือกชนิดบล็อก
+การควบคุม: WASD เดิน, Space กระโดด, เมาส์มองรอบ, คลิกซ้ายทุบบล็อก, คลิกขวาวางบล็อก, ปุ่ม 1-8 เลือกชนิดบล็อก, R บันทึกโลก
+
+## ปัญหาและการแก้ไข (Troubleshooting)
+
+### 1. รัน ./miniroblox แล้วขึ้น `GLIBC_2.xx not found`
+สาเหตุ: ไฟล์ binary ถูก build บนเครื่องที่ใช้ glibc ใหม่กว่าเครื่องของคุณ
+วิธีแก้ (เลือกอย่างใดอย่างหนึ่ง):
+- ดาวน์โหลดเวอร์ชัน static (musl) ที่รันได้กับ Linux ทุกรุ่น
+- build เองจากโค้ด: `cd game && cargo build --release`
+- อัปเกรดระบบเป็น Ubuntu 20.04 ขึ้นไป
+
+### 2. `cargo: command not found`
+สาเหตุ: ยังไม่ได้ติดตั้ง Rust
+วิธีแก้:
+```
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source "$HOME/.cargo/env"
+```
+
+### 3. cargo build ขึ้น `error: linker 'cc' not found`
+สาเหตุ: ไม่มี C compiler
+วิธีแก้: `sudo apt install build-essential`
+
+### 4. รันเกมแล้วขึ้น `error while loading shared libraries` (libX11 / libGL / libasound)
+สาเหตุ: ขาดไลบรารีระบบสำหรับกราฟิกและเสียง
+วิธีแก้: `sudo apt install -y libx11-dev libxi-dev libgl1-mesa-dev libasound2-dev pkg-config`
+
+### 5. เกมไม่เปิดหน้าต่าง (รันบน server / ไม่มีจอ)
+สาเหตุ: เกมต้องการหน้าจอ + การ์ดจอ (desktop environment)
+วิธีแก้: รันบนเครื่องที่มี desktop (Linux/Windows/Mac) ไม่ใช่ server แบบไม่มีจอ
