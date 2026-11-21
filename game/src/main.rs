@@ -295,7 +295,7 @@ async fn main() {
             pitch.cos() * yaw.cos(),
         )
         .normalize();
-        let right = vec3(yaw.cos(), 0.0, -yaw.sin());
+        let right = vec3(-yaw.cos(), 0.0, yaw.sin());
 
         // --- เดิน ---
         let mut horiz = Vec3::ZERO;
