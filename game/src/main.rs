@@ -213,6 +213,7 @@ async fn main() {
     let mut cam_pos = vec3(4.0, 6.0, 4.0);
     let mut vel = vec3(0.0, 0.0, 0.0);
     let mut grounded = false;
+    let mut third_person = false;
     // หันกล้องมาที่จุดกำเนิด
     let mut yaw: f32 = -135.0_f32.to_radians();
     let mut pitch: f32 = -25.0_f32.to_radians();
@@ -300,12 +301,26 @@ async fn main() {
             vel = Vec3::ZERO;
             grounded = false;
         }
+        // สลับมุมมองบุคคลที่ 1 / 3 ด้วยปุ่ม V
+        if is_key_pressed(KeyCode::V) {
+            third_person = !third_person;
+        }
+        // ออกจากโปรแกรมด้วยปุ่ม Esc
+        if is_key_pressed(KeyCode::Escape) {
+            break;
+        }
 
         clear_background(SKYBLUE);
 
+        // กล้อง: บุคคลที่ 1 (ตาตัวเอง) หรือบุคคลที่ 3 (มองจากด้านหลัง)
+        let (cam_position, cam_target) = if third_person {
+            (cam_pos - forward * 4.0 + vec3(0.0, 1.2, 0.0), cam_pos + vec3(0.0, 0.2, 0.0))
+        } else {
+            (cam_pos, cam_pos + forward)
+        };
         let camera = Camera3D {
-            position: cam_pos,
-            target: cam_pos + forward,
+            position: cam_position,
+            target: cam_target,
             up: vec3(0.0, 1.0, 0.0),
             fovy: 45.0,
             ..Default::default()
@@ -320,6 +335,13 @@ async fn main() {
         }
         // ไฟสัญญาณจุดเกิด (beacon สีทอง มองเห็นแต่ไกล)
         draw_cube_wires(vec3(4.0, 3.0, 4.0), vec3(0.4, 4.0, 0.4), GOLD);
+
+        // ตัวผู้เล่น (เห็นตอนมุมมองบุคคลที่ 3) — ลำตัว + หัว
+        if third_person {
+            let body = cam_pos - vec3(0.0, 0.4, 0.0);
+            draw_cube(body, vec3(0.5, 0.8, 0.25), None, Color::from_rgba(40, 90, 200, 255));
+            draw_cube(body + vec3(0.0, 0.65, 0.0), vec3(0.4, 0.4, 0.4), None, Color::from_rgba(230, 190, 150, 255));
+        }
 
         // --- เล็งบล็อก: ทุบ (คลิกซ้าย) / วาง (คลิกขวา) ---
         if let Some((hit, normal)) = raycast(cam_pos, forward, &world, REACH) {
@@ -346,7 +368,7 @@ async fn main() {
         set_default_camera();
 
         // --- HUD ---
-        draw_text("Mini Roblox - LMB break, RMB place, WASD move, Space jump, R save, T respawn", 20.0, 30.0, 26.0, WHITE);
+        draw_text("Mini Roblox - LMB break, RMB place, WASD move, Space jump, V view, R save, T respawn, Esc exit", 20.0, 30.0, 26.0, WHITE);
         draw_text(&format!("Block (1-8): {} | Blocks: {} | FPS {}", selected.name(), world.len(), get_fps()), 20.0, 62.0, 26.0, WHITE);
 
         next_frame().await
