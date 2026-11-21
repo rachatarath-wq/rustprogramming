@@ -213,7 +213,7 @@ async fn main() {
     let mut cam_pos = vec3(4.0, 6.0, 4.0);
     let mut vel = vec3(0.0, 0.0, 0.0);
     let mut grounded = false;
-    let mut third_person = false;
+    let mut third_person = true;
     // หันกล้องมาที่จุดกำเนิด
     let mut yaw: f32 = -135.0_f32.to_radians();
     let mut pitch: f32 = -25.0_f32.to_radians();
@@ -342,12 +342,8 @@ async fn main() {
             let skin = Color::from_rgba(230, 190, 150, 255);
             let shirt = Color::from_rgba(40, 90, 200, 255);
             let pants = Color::from_rgba(30, 45, 90, 255);
-            // หัว + ดวงตา (บอกทิศทางที่หัน)
+            // หัว
             draw_cube(p + vec3(0.0, 0.45, 0.0), vec3(0.4, 0.4, 0.4), None, skin);
-            let face = p + vec3(0.0, 0.45, 0.0) + forward * 0.2;
-            let eye_r = right * 0.11;
-            draw_cube(face - eye_r, vec3(0.07, 0.07, 0.02), None, Color::from_rgba(25, 25, 25, 255));
-            draw_cube(face + eye_r, vec3(0.07, 0.07, 0.02), None, Color::from_rgba(25, 25, 25, 255));
             // ลำตัว (เสื้อสีน้ำเงิน)
             draw_cube(p + vec3(0.0, 0.05, 0.0), vec3(0.5, 0.6, 0.25), None, shirt);
             // แขนซ้าย-ขวา
@@ -383,7 +379,7 @@ async fn main() {
         set_default_camera();
 
         // --- HUD ---
-        draw_text("Mini Roblox - LMB break, RMB place, WASD move, Space jump, V view, R save, T respawn, Esc exit", 20.0, 30.0, 26.0, WHITE);
+        draw_text("WASD: walk | Space: jump | LMB/RMB: break/place | V: view | R: save | T: home | Esc: quit", 20.0, 30.0, 24.0, WHITE);
         draw_text(&format!("Block (1-8): {} | Blocks: {} | FPS {}", selected.name(), world.len(), get_fps()), 20.0, 62.0, 26.0, WHITE);
 
         next_frame().await
