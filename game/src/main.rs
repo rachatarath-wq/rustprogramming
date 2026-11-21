@@ -344,22 +344,26 @@ async fn main() {
         // ไฟสัญญาณจุดเกิด (beacon สีทอง มองเห็นแต่ไกล)
         draw_cube_wires(vec3(4.0, 3.0, 4.0), vec3(0.4, 4.0, 0.4), GOLD);
 
-        // ตัวผู้เล่น (เห็นตอนมุมมองบุคคลที่ 3) — ทรงคน: หัว+ตา, ลำตัว, แขน, ขา
+        // ตัวผู้เล่น (เห็นตอนมุมมองบุคคลที่ 3) — ทรงคน หมุนตามทิศทางที่มอง
         if third_person {
-            let p = cam_pos;
             let skin = Color::from_rgba(230, 190, 150, 255);
             let shirt = Color::from_rgba(40, 90, 200, 255);
             let pants = Color::from_rgba(30, 45, 90, 255);
-            // หัว
-            draw_cube(p + vec3(0.0, 0.45, 0.0), vec3(0.4, 0.4, 0.4), None, skin);
+            // วางตัวละครที่ตำแหน่งผู้เล่น + หมุนตามทิศที่มอง (yaw)
+            push_model_matrix(Mat4::from_translation(cam_pos) * Mat4::from_rotation_y(yaw));
+            // หัว + ดวงตา (ด้านหน้า = +Z)
+            draw_cube(vec3(0.0, 0.45, 0.0), vec3(0.4, 0.4, 0.4), None, skin);
+            draw_cube(vec3(-0.11, 0.45, 0.21), vec3(0.07, 0.07, 0.02), None, Color::from_rgba(25, 25, 25, 255));
+            draw_cube(vec3(0.11, 0.45, 0.21), vec3(0.07, 0.07, 0.02), None, Color::from_rgba(25, 25, 25, 255));
             // ลำตัว (เสื้อสีน้ำเงิน)
-            draw_cube(p + vec3(0.0, 0.05, 0.0), vec3(0.5, 0.6, 0.25), None, shirt);
+            draw_cube(vec3(0.0, 0.05, 0.0), vec3(0.5, 0.6, 0.25), None, shirt);
             // แขนซ้าย-ขวา
-            draw_cube(p + vec3(-0.33, 0.05, 0.0), vec3(0.15, 0.6, 0.15), None, shirt);
-            draw_cube(p + vec3(0.33, 0.05, 0.0), vec3(0.15, 0.6, 0.15), None, shirt);
+            draw_cube(vec3(-0.33, 0.05, 0.0), vec3(0.15, 0.6, 0.15), None, shirt);
+            draw_cube(vec3(0.33, 0.05, 0.0), vec3(0.15, 0.6, 0.15), None, shirt);
             // ขาซ้าย-ขวา (กางเกงสีเข้ม)
-            draw_cube(p + vec3(-0.15, -0.5, 0.0), vec3(0.2, 0.5, 0.2), None, pants);
-            draw_cube(p + vec3(0.15, -0.5, 0.0), vec3(0.2, 0.5, 0.2), None, pants);
+            draw_cube(vec3(-0.15, -0.5, 0.0), vec3(0.2, 0.5, 0.2), None, pants);
+            draw_cube(vec3(0.15, -0.5, 0.0), vec3(0.2, 0.5, 0.2), None, pants);
+            pop_model_matrix();
         }
 
         // --- เล็งบล็อก: ทุบ (คลิกซ้าย) / วาง (คลิกขวา) ---
@@ -395,6 +399,9 @@ async fn main() {
         // --- HUD ---
         draw_text("WASD: walk | Space: jump | LMB/RMB: break/place | V: view | R: save | T: home | Esc: mouse | F10: quit", 20.0, 30.0, 24.0, WHITE);
         draw_text(&format!("Block (1-8): {} | Blocks: {} | FPS {}", selected.name(), world.len(), get_fps()), 20.0, 62.0, 26.0, WHITE);
+        if !mouse_grabbed {
+            draw_text("Mouse released - click the window to grab again", 20.0, 92.0, 22.0, YELLOW);
+        }
 
         next_frame().await
     }
