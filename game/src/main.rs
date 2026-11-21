@@ -261,6 +261,9 @@ async fn main() {
     let mut wolf_spawn_timer: f32 = 0.0;
     let mut hurt_cd: f32 = 0.0;
     let mut step_timer: f32 = 0.0;
+    // โหมดเล่นอัตโนมัติ (AI เล่นให้ดู)
+    let mut autoplay = false;
+    let mut auto_attack_cd: f32 = 0.0;
 
     let spawn_points: [(f32, f32, f32); 4] =
         [(-7.0, 2.0, -7.0), (7.0, 2.0, 7.0), (-7.0, 2.0, 7.0), (7.0, 2.0, -7.0)];
@@ -282,11 +285,68 @@ async fn main() {
         let nightness = (-day_factor).clamp(0.0, 1.0); // 0=กลางวัน, 1=กลางคืน
         let is_night = day_factor < -0.2;
 
-        // --- มองรอบด้วยเมาส์ ---
-        if mouse_grabbed {
+        // --- เปิด/ปิดโหมดเล่นอัตโนมัติ (ปุ่ม P) ---
+        if is_key_pressed(KeyCode::P) {
+            autoplay = !autoplay;
+        }
+
+        // --- มองรอบด้วยเมาส์ (เฉพาะตอนเล่นเอง) ---
+        if mouse_grabbed && !autoplay {
             let mouse_delta = mouse_delta_position();
             yaw -= mouse_delta.x * 0.003;
             pitch = (pitch - mouse_delta.y * 0.003).clamp(-1.5, 1.5);
+        }
+
+        // --- โหมดเล่นอัตโนมัติ: AI เดินหาแอปเปิ้ล + สู้หมาป่า ---
+        let mut auto_dir = Vec3::ZERO;
+        if autoplay {
+            let mut target: Option<Vec3> = None;
+            let mut min_d = f32::MAX;
+            let mut target_is_wolf = false;
+            for a in &apple_items {
+                if !a.taken {
+                    let d = (a.pos - cam_pos).length();
+                    if d < min_d {
+                        min_d = d;
+                        target = Some(a.pos);
+                        target_is_wolf = false;
+                    }
+                }
+            }
+            for w in &wolves {
+                let d = (w.pos - cam_pos).length();
+                if d < min_d {
+                    min_d = d;
+                    target = Some(w.pos);
+                    target_is_wolf = true;
+                }
+            }
+            if let Some(t) = target {
+                let to = t - cam_pos;
+                let flat = vec3(to.x, 0.0, to.z);
+                let hd = flat.length();
+                if hd > 0.2 {
+                    let dirn = flat / hd;
+                    yaw = dirn.x.atan2(dirn.z);
+                    pitch = (to.y / hd).atan().clamp(-1.5, 1.5);
+                    auto_dir = dirn;
+                }
+                // ตีหมาป่าเมื่อเข้าใกล้พอ
+                if target_is_wolf && min_d < 2.5 {
+                    auto_attack_cd -= dt;
+                    if auto_attack_cd <= 0.0 {
+                        for w in &mut wolves {
+                            let tw = w.pos - cam_pos;
+                            if tw.length() < 2.5 {
+                                w.hp -= 1;
+                                play(&snd_break);
+                                auto_attack_cd = 0.5;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         let forward = vec3(
@@ -299,12 +359,16 @@ async fn main() {
 
         // --- เดิน ---
         let mut horiz = Vec3::ZERO;
-        if is_key_down(KeyCode::W) { horiz += forward; }
-        if is_key_down(KeyCode::S) { horiz -= forward; }
-        if is_key_down(KeyCode::D) { horiz += right; }
-        if is_key_down(KeyCode::A) { horiz -= right; }
-        if horiz != Vec3::ZERO {
-            horiz = horiz.normalize() * SPEED;
+        if autoplay {
+            horiz = auto_dir * SPEED;
+        } else {
+            if is_key_down(KeyCode::W) { horiz += forward; }
+            if is_key_down(KeyCode::S) { horiz -= forward; }
+            if is_key_down(KeyCode::D) { horiz += right; }
+            if is_key_down(KeyCode::A) { horiz -= right; }
+            if horiz != Vec3::ZERO {
+                horiz = horiz.normalize() * SPEED;
+            }
         }
         vel.x = horiz.x;
         vel.z = horiz.z;
@@ -580,7 +644,10 @@ async fn main() {
         set_default_camera();
 
         // --- HUD ---
-        draw_text("WASD: walk | Space: jump | LMB: hit/break | RMB: place | E: eat | V: view | T: home | Esc: mouse | F10: quit", 20.0, 30.0, 22.0, WHITE);
+        draw_text("WASD: walk | Space: jump | LMB: hit/break | RMB: place | E: eat | V: view | T: home | P: auto | Esc: mouse | F10: quit", 20.0, 30.0, 22.0, WHITE);
+        if autoplay {
+            draw_text(">> AUTO-PLAY (AI เล่นให้ดู) - กด P เพื่อคุมเอง <<", 20.0, 168.0, 30.0, GOLD);
+        }
         // แถบเลือด
         draw_rectangle(20.0, 62.0, 200.0, 16.0, Color::from_rgba(0, 0, 0, 180));
         draw_rectangle(20.0, 62.0, 200.0 * (hp / 100.0), 16.0, RED);
