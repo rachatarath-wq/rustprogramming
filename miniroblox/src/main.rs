@@ -393,6 +393,7 @@ async fn main() {
     let mut nights_survived: i32 = 0;   // จำนวนคืนที่รอดแล้ว
     let mut game_won = false;           // ชนะเกม (ปราบบอส)
     let mut boss_spawned = false;       // บอสเกิดแล้วหรือยัง
+    let mut level_flash: f32 = 0.0;     // แสดง LEVEL UP ชั่วคราว
     let mut sword_swing: f32 = 0.0;     // จังหวะฟันดาบ
     let mut cam_dist: f32 = 4.0;        // ระยะกล้องบุคคลที่ 3 (ซูมด้วย scroll)
 
@@ -410,12 +411,17 @@ async fn main() {
         if !is_night && prev_night && !game_won {
             survived = true;
             nights_survived += 1;
-            level = (nights_survived + 1).min(3);
+            let new_level = (nights_survived + 1).min(3);
+            if new_level > level {
+                level_flash = 3.0;   // แสดง "LEVEL UP!"
+            }
+            level = new_level;
         }
         prev_night = is_night;
 
         sword_swing = (sword_swing - dt).max(0.0);
         cam_dist = (cam_dist - mouse_wheel().1 * 0.5).clamp(2.0, 10.0);
+        level_flash = (level_flash - dt).max(0.0);
         let max_wolves = match level { 1 => 2, 2 => 3, _ => 4 };
         let wolf_speed = match level { 1 => 3.5, 2 => 4.0, _ => 4.5 };
 
@@ -987,12 +993,16 @@ async fn main() {
             let dot_y = radar_cy - rel_angle.cos() * 35.0;
             draw_circle(dot_x, dot_y, 5.0, RED);
         }
+        if level_flash > 0.0 {
+            draw_text(&format!("LEVEL UP! -> Level {}!", level), screen_width() / 2.0 - 220.0, 160.0, 50.0, GOLD);
+        }
         if survived && !game_won {
             draw_text("YOU SURVIVED THE NIGHT!", screen_width() / 2.0 - 250.0, 190.0, 44.0, GOLD);
             draw_texture(&thai_win_tex, screen_width() / 2.0 - thai_win_tex.width() / 2.0, 252.0, WHITE);
         }
-        if level >= 3 && !game_won {
-            draw_text("FINAL LEVEL: DEFEAT THE BIG BOSS!", screen_width() / 2.0 - 300.0, 230.0, 34.0, RED);
+        if !game_won {
+            let goal = if level >= 3 { "GOAL: DEFEAT THE BIG BOSS!" } else { "GOAL: SURVIVE THE NIGHT TO LEVEL UP" };
+            draw_text(goal, screen_width() / 2.0 - 300.0, 300.0, 30.0, if level >= 3 { RED } else { YELLOW });
         }
         if game_won {
             draw_text("YOU DEFEATED THE BOSS! YOU WIN!", screen_width() / 2.0 - 340.0, 190.0, 48.0, GOLD);
