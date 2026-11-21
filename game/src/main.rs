@@ -336,11 +336,26 @@ async fn main() {
         // ไฟสัญญาณจุดเกิด (beacon สีทอง มองเห็นแต่ไกล)
         draw_cube_wires(vec3(4.0, 3.0, 4.0), vec3(0.4, 4.0, 0.4), GOLD);
 
-        // ตัวผู้เล่น (เห็นตอนมุมมองบุคคลที่ 3) — ลำตัว + หัว
+        // ตัวผู้เล่น (เห็นตอนมุมมองบุคคลที่ 3) — ทรงคน: หัว+ตา, ลำตัว, แขน, ขา
         if third_person {
-            let body = cam_pos - vec3(0.0, 0.4, 0.0);
-            draw_cube(body, vec3(0.5, 0.8, 0.25), None, Color::from_rgba(40, 90, 200, 255));
-            draw_cube(body + vec3(0.0, 0.65, 0.0), vec3(0.4, 0.4, 0.4), None, Color::from_rgba(230, 190, 150, 255));
+            let p = cam_pos;
+            let skin = Color::from_rgba(230, 190, 150, 255);
+            let shirt = Color::from_rgba(40, 90, 200, 255);
+            let pants = Color::from_rgba(30, 45, 90, 255);
+            // หัว + ดวงตา (บอกทิศทางที่หัน)
+            draw_cube(p + vec3(0.0, 0.45, 0.0), vec3(0.4, 0.4, 0.4), None, skin);
+            let face = p + vec3(0.0, 0.45, 0.0) + forward * 0.2;
+            let eye_r = right * 0.11;
+            draw_cube(face - eye_r, vec3(0.07, 0.07, 0.02), None, Color::from_rgba(25, 25, 25, 255));
+            draw_cube(face + eye_r, vec3(0.07, 0.07, 0.02), None, Color::from_rgba(25, 25, 25, 255));
+            // ลำตัว (เสื้อสีน้ำเงิน)
+            draw_cube(p + vec3(0.0, 0.05, 0.0), vec3(0.5, 0.6, 0.25), None, shirt);
+            // แขนซ้าย-ขวา
+            draw_cube(p + vec3(-0.33, 0.05, 0.0), vec3(0.15, 0.6, 0.15), None, shirt);
+            draw_cube(p + vec3(0.33, 0.05, 0.0), vec3(0.15, 0.6, 0.15), None, shirt);
+            // ขาซ้าย-ขวา (กางเกงสีเข้ม)
+            draw_cube(p + vec3(-0.15, -0.5, 0.0), vec3(0.2, 0.5, 0.2), None, pants);
+            draw_cube(p + vec3(0.15, -0.5, 0.0), vec3(0.2, 0.5, 0.2), None, pants);
         }
 
         // --- เล็งบล็อก: ทุบ (คลิกซ้าย) / วาง (คลิกขวา) ---
