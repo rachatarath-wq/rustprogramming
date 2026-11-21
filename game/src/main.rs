@@ -236,6 +236,13 @@ async fn main() {
     let snd_step = load_sound_from_bytes(include_bytes!("../assets/step.wav")).await.ok();
     let snd_growl = load_sound_from_bytes(include_bytes!("../assets/growl.wav")).await.ok();
 
+    // วินิจฉัยเสียง: พิมพ์จำนวนเสียงที่โหลดได้ (ถ้า 0 = ไม่มี sound device)
+    let sound_n = [&snd_break, &snd_place, &snd_hurt, &snd_eat, &snd_step, &snd_growl]
+        .iter()
+        .filter(|s| s.is_some())
+        .count();
+    println!("เสียงโหลด {}/6{}", sound_n, if sound_n == 0 { " — ไม่มี sound device" } else { "" });
+
     // ข้อความไทย (render เป็น PNG ล่วงหน้าด้วย HarfBuzz shaping แล้ว)
     let thai_win_tex = Texture2D::from_file_with_format(include_bytes!("../assets/thai_win.png"), None);
     let thai_auto_tex = Texture2D::from_file_with_format(include_bytes!("../assets/thai_auto.png"), None);
