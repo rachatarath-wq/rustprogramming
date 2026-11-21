@@ -580,6 +580,9 @@ async fn main() {
 
         // หมาป่า
         for w in &wolves {
+            // เสาแสงแดงเหนือหมาป่า (มองเห็นตำแหน่งจากไกล)
+            draw_cube(vec3(w.pos.x, w.pos.y + 2.5, w.pos.z), vec3(0.3, 5.0, 0.3), None, Color::from_rgba(255, 45, 45, 110));
+            draw_cube_wires(vec3(w.pos.x, w.pos.y + 2.5, w.pos.z), vec3(0.3, 5.0, 0.3), Color::from_rgba(255, 70, 70, 220));
             let to_player = (cam_pos - w.pos).normalize();
             let body = w.pos + vec3(0.0, 0.2, 0.0);
             draw_cube(body, vec3(0.6, 0.5, 0.9), None, Color::from_rgba(90, 90, 95, 255));
@@ -659,7 +662,21 @@ async fn main() {
         draw_text(&format!("Hunger {:.0}", hunger), 230.0, 86.0, 22.0, WHITE);
         // แอปเปิ้ล + เวลา
         let day_label = if is_night { "NIGHT (wolves!)" } else { "DAY" };
-        draw_text(&format!("Apples: {} | {} | FPS {}", apples, day_label, get_fps()), 20.0, 112.0, 22.0, WHITE);
+        draw_text(&format!("Apples: {} | Wolves: {} | {} | FPS {}", apples, wolves.len(), day_label, get_fps()), 20.0, 112.0, 22.0, WHITE);
+        // เรดาร์หาหมาป่า (มุมขวาบน) — จุดแดง = หมาป่า, จุดเขียว = ตัวเรา
+        let radar_cx = screen_width() - 70.0;
+        let radar_cy = 70.0;
+        draw_circle(radar_cx, radar_cy, 45.0, Color::from_rgba(0, 0, 0, 130));
+        draw_circle_lines(radar_cx, radar_cy, 45.0, 2.0, Color::from_rgba(255, 255, 255, 120));
+        draw_circle(radar_cx, radar_cy, 4.0, GREEN);
+        for w in &wolves {
+            let rel = w.pos - cam_pos;
+            let angle = rel.x.atan2(rel.z);
+            let rel_angle = angle - yaw;
+            let dot_x = radar_cx - rel_angle.sin() * 35.0;
+            let dot_y = radar_cy - rel_angle.cos() * 35.0;
+            draw_circle(dot_x, dot_y, 5.0, RED);
+        }
         if !mouse_grabbed {
             draw_text("Mouse released - click the window to grab again", 20.0, 140.0, 20.0, YELLOW);
         }
