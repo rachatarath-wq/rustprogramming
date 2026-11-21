@@ -214,6 +214,7 @@ async fn main() {
     let mut vel = vec3(0.0, 0.0, 0.0);
     let mut grounded = false;
     let mut third_person = true;
+    let mut mouse_grabbed = true;
     // หันกล้องมาที่จุดกำเนิด
     let mut yaw: f32 = -135.0_f32.to_radians();
     let mut pitch: f32 = -25.0_f32.to_radians();
@@ -224,10 +225,12 @@ async fn main() {
     loop {
         let dt = get_frame_time();
 
-        // --- มองรอบด้วยเมาส์ ---
-        let mouse_delta = mouse_delta_position();
-        yaw -= mouse_delta.x * 0.003;
-        pitch = (pitch - mouse_delta.y * 0.003).clamp(-1.5, 1.5);
+        // --- มองรอบด้วยเมาส์ (เฉพาะตอนจับเมาส์อยู่) ---
+        if mouse_grabbed {
+            let mouse_delta = mouse_delta_position();
+            yaw -= mouse_delta.x * 0.003;
+            pitch = (pitch - mouse_delta.y * 0.003).clamp(-1.5, 1.5);
+        }
 
         // เวกเตอร์ทิศทางที่มอง
         let forward = vec3(
@@ -305,8 +308,13 @@ async fn main() {
         if is_key_pressed(KeyCode::V) {
             third_person = !third_person;
         }
-        // ออกจากโปรแกรมด้วยปุ่ม Esc
+        // ปล่อย/จับเมาส์ด้วยปุ่ม Esc (ตอนปล่อย ใช้เมาส์กับโปรแกรมอื่นได้)
         if is_key_pressed(KeyCode::Escape) {
+            mouse_grabbed = !mouse_grabbed;
+            set_cursor_grab(mouse_grabbed);
+        }
+        // ออกจากโปรแกรมด้วยปุ่ม F10
+        if is_key_pressed(KeyCode::F10) {
             break;
         }
 
@@ -359,27 +367,33 @@ async fn main() {
             let hp = vec3(hit.0 as f32 + 0.5, hit.1 as f32 + 0.5, hit.2 as f32 + 0.5);
             draw_cube_wires(hp, vec3(1.01, 1.01, 1.01), BLACK);
 
-            if is_mouse_button_pressed(MouseButton::Left) {
-                world.remove(&hit);
-            }
-            if is_mouse_button_pressed(MouseButton::Right) {
-                let place = (hit.0 + normal.0, hit.1 + normal.1, hit.2 + normal.2);
-                // ไม่วางบล็อกทับตัวผู้เล่น
-                let player_cell = (
-                    cam_pos.x.floor() as i32,
-                    cam_pos.y.floor() as i32,
-                    cam_pos.z.floor() as i32,
-                );
-                if place != player_cell {
-                    world.insert(place, selected);
+            if mouse_grabbed {
+                if is_mouse_button_pressed(MouseButton::Left) {
+                    world.remove(&hit);
+                }
+                if is_mouse_button_pressed(MouseButton::Right) {
+                    let place = (hit.0 + normal.0, hit.1 + normal.1, hit.2 + normal.2);
+                    let player_cell = (
+                        cam_pos.x.floor() as i32,
+                        cam_pos.y.floor() as i32,
+                        cam_pos.z.floor() as i32,
+                    );
+                    if place != player_cell {
+                        world.insert(place, selected);
+                    }
                 }
             }
+        }
+        // ตอนปล่อยเมาส์อยู่ คลิกที่หน้าต่างเกมเพื่อจับเมาส์กลับ
+        if !mouse_grabbed && is_mouse_button_pressed(MouseButton::Left) {
+            mouse_grabbed = true;
+            set_cursor_grab(true);
         }
 
         set_default_camera();
 
         // --- HUD ---
-        draw_text("WASD: walk | Space: jump | LMB/RMB: break/place | V: view | R: save | T: home | Esc: quit", 20.0, 30.0, 24.0, WHITE);
+        draw_text("WASD: walk | Space: jump | LMB/RMB: break/place | V: view | R: save | T: home | Esc: mouse | F10: quit", 20.0, 30.0, 24.0, WHITE);
         draw_text(&format!("Block (1-8): {} | Blocks: {} | FPS {}", selected.name(), world.len(), get_fps()), 20.0, 62.0, 26.0, WHITE);
 
         next_frame().await
