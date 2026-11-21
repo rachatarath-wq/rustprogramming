@@ -56,3 +56,14 @@ source "$HOME/.cargo/env"
 ### 5. เกมไม่เปิดหน้าต่าง (รันบน server / ไม่มีจอ)
 สาเหตุ: เกมต้องการหน้าจอ + การ์ดจอ (desktop environment)
 วิธีแก้: รันบนเครื่องที่มี desktop (Linux/Windows/Mac) ไม่ใช่ server แบบไม่มีจอ
+
+### 6. เกมเปิดได้แต่ช้ามาก (FPS ต่ำ / เปิดเกมใช้เวลาหลายนาทีกว่าจะเข้า)
+สาเหตุ: เครื่องมีการ์ดจอ (เช่น NVIDIA) แต่ driver พัง/ไม่ถูกโหลด → ระบบหลุดไป render ด้วย CPU (software rendering / llvmpipe) แทนการ์ดจอ ทำให้วาดเฟรมช้ามาก โดยเฉพาะเฟรมแรก
+วิธีเช็ค: รัน `nvidia-smi` — ถ้าขึ้น error "couldn't communicate with the NVIDIA driver" แปลว่า driver พัง
+วิธีแก้ (Ubuntu):
+```
+ubuntu-drivers devices          # ดู driver ที่แนะนำสำหรับการ์ดจอ
+sudo ubuntu-drivers autoinstall # ติดตั้ง driver ที่แนะนำ
+sudo reboot                     # reboot แล้วตรวจ nvidia-smi อีกครั้ง
+```
+หลังซ่อมเสร็จเกมจะเร็วขึ้นมาก (เข้าเกมภายในไม่กี่วินาที)
