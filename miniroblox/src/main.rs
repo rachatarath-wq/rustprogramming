@@ -90,20 +90,82 @@ const SAVE_FILE: &str = "world.txt";
 // ความยาว 1 รอบกลางวัน+กลางคืน (วินาที)
 const DAY_LENGTH: f32 = 90.0;
 
+// สร้างบ้าน (พื้น + ผนัง + ช่องประตู + หลังคา)
+fn build_house(w: &mut HashMap<BlockPos, Block>, x0: i32, z0: i32, wall: Block, roof: Block) {
+    let x1 = x0 + 4;
+    let z1 = z0 + 4;
+    for x in x0..=x1 {
+        for z in z0..=z1 {
+            w.insert((x, 0, z), Block::Stone);   // พื้นบ้าน
+            for y in 1..=2 {
+                if x == x0 || x == x1 || z == z0 || z == z1 {
+                    // เว้นช่องประตู (ผนังหน้า ตรงกลาง)
+                    if z == z0 && x == x0 + 2 && y == 1 {
+                        continue;
+                    }
+                    w.insert((x, y, z), wall);
+                }
+            }
+        }
+    }
+    for x in (x0 - 1)..=(x1 + 1) {
+        for z in (z0 - 1)..=(z1 + 1) {
+            w.insert((x, 3, z), roof);   // หลังคา
+        }
+    }
+}
+
 fn build_world() -> HashMap<BlockPos, Block> {
     let mut w = HashMap::new();
-    for x in -8..8 {
-        for z in -8..8 {
+    // 1. พื้นหญ้าใหญ่ 40x40
+    for x in -20..20 {
+        for z in -20..20 {
             w.insert((x, 0, z), Block::Grass);
         }
     }
-    for x in 0..3 {
-        for z in 0..3 {
-            w.insert((x, 1, z), Block::Stone);
+    // 2. ถนนหินตัดกัน (กว้าง 3)
+    for x in -20..20 {
+        for dz in -1..=1 {
+            w.insert((x, 0, dz), Block::Stone);
         }
     }
-    for y in 1..4 {
-        w.insert((5, y, 5), Block::Wood);
+    for z in -20..20 {
+        for dx in -1..=1 {
+            w.insert((dx, 0, z), Block::Stone);
+        }
+    }
+    // 3. ลานกลางหิน 9x9 (จุดเกิด)
+    for x in -4..=4 {
+        for z in -4..=4 {
+            w.insert((x, 0, z), Block::Stone);
+        }
+    }
+    // 4. ต้นไม้ 8 ต้น (ลำต้นไม้ + ใบ)
+    let trees = [(-12, -12), (12, -12), (-12, 12), (12, 12), (8, -16), (-8, 16), (16, 6), (-16, -6)];
+    for (tx, tz) in trees {
+        for y in 1..=4 {
+            w.insert((tx, y, tz), Block::Wood);
+        }
+        for dx in -1..=1 {
+            for dz in -1..=1 {
+                w.insert((tx + dx, 5, tz + dz), Block::Grass);
+            }
+        }
+    }
+    // 5. บ้าน 4 หลัง (มุมเมือง)
+    build_house(&mut w, -10, -6, Block::Wood, Block::Brick);
+    build_house(&mut w, 6, -12, Block::Wood, Block::Snow);
+    build_house(&mut w, -12, 8, Block::Stone, Block::Wood);
+    build_house(&mut w, 8, 8, Block::Stone, Block::Brick);
+    // 6. เนินเขา (dirt + หญ้ายอด)
+    let hills = [(-17, -17, 3), (17, -17, 2), (17, 17, 3), (-17, 17, 2)];
+    for (hx, hz, hh) in hills {
+        for y in 1..=hh {
+            let b = if y == hh { Block::Grass } else { Block::Dirt };
+            for (dx, dz) in [(0, 0), (1, 0), (-1, 0), (0, 1), (0, -1)] {
+                w.insert((hx + dx, y, hz + dz), b);
+            }
+        }
     }
     w
 }
@@ -314,12 +376,14 @@ async fn main() {
     }
 
     let spawn_points: [(f32, f32, f32); 4] =
-        [(-7.0, 2.0, -7.0), (7.0, 2.0, 7.0), (-7.0, 2.0, 7.0), (7.0, 2.0, -7.0)];
+        [(-15.0, 2.0, -15.0), (15.0, 2.0, 15.0), (-15.0, 2.0, 15.0), (15.0, 2.0, -15.0)];
     let mut apple_items: Vec<Apple> = vec![
-        Apple { pos: vec3(2.0, 1.2, -3.0), taken: false },
-        Apple { pos: vec3(-3.0, 1.2, 2.0), taken: false },
-        Apple { pos: vec3(6.0, 1.2, -5.0), taken: false },
-        Apple { pos: vec3(-5.0, 1.2, 6.0), taken: false },
+        Apple { pos: vec3(5.0, 1.2, -6.0), taken: false },
+        Apple { pos: vec3(-6.0, 1.2, 5.0), taken: false },
+        Apple { pos: vec3(10.0, 1.2, -10.0), taken: false },
+        Apple { pos: vec3(-10.0, 1.2, 10.0), taken: false },
+        Apple { pos: vec3(14.0, 1.2, -3.0), taken: false },
+        Apple { pos: vec3(-14.0, 1.2, 3.0), taken: false },
     ];
 
     // --- ระบบอนุภาค + ระดับชั้น + บอส ---
@@ -753,7 +817,7 @@ async fn main() {
         for (pos, block) in &world {
             let p = vec3(pos.0 as f32 + 0.5, pos.1 as f32 + 0.5, pos.2 as f32 + 0.5);
             let dist = (p - cam_pos).length();
-            let fog = ((dist - 12.0) / 22.0).clamp(0.0, 0.9);
+            let fog = ((dist - 20.0) / 20.0).clamp(0.0, 0.85);
             let c = lerp_color(block.color(), sky, fog);
             draw_cube(p, vec3(1.0, 1.0, 1.0), None, c);
         }
