@@ -319,6 +319,15 @@ async fn main() {
     // ข้อความไทย (render เป็น PNG ล่วงหน้าด้วย HarfBuzz shaping แล้ว)
     let thai_win_tex = Texture2D::from_file_with_format(include_bytes!("../assets/thai_win.png"), None);
     let thai_auto_tex = Texture2D::from_file_with_format(include_bytes!("../assets/thai_auto.png"), None);
+    // textures บล็อก
+    let tex_grass = Texture2D::from_file_with_format(include_bytes!("../assets/tex_grass.png"), None);
+    let tex_dirt = Texture2D::from_file_with_format(include_bytes!("../assets/tex_dirt.png"), None);
+    let tex_stone = Texture2D::from_file_with_format(include_bytes!("../assets/tex_stone.png"), None);
+    let tex_wood = Texture2D::from_file_with_format(include_bytes!("../assets/tex_wood.png"), None);
+    let tex_sand = Texture2D::from_file_with_format(include_bytes!("../assets/tex_sand.png"), None);
+    let tex_glass = Texture2D::from_file_with_format(include_bytes!("../assets/tex_glass.png"), None);
+    let tex_brick = Texture2D::from_file_with_format(include_bytes!("../assets/tex_brick.png"), None);
+    let tex_snow = Texture2D::from_file_with_format(include_bytes!("../assets/tex_snow.png"), None);
 
     // --- โลก ---
     let mut world = load_world(SAVE_FILE);
@@ -817,13 +826,37 @@ async fn main() {
         };
         set_camera(&camera);
 
+        // ดวงอาทิตย์/ดวงจันทร์โคจรตามเวลา
+        let sun_angle = time_of_day * std::f32::consts::TAU;
+        let sun_dir = vec3(sun_angle.cos(), sun_angle.sin().abs() * 0.7 + 0.25, 0.25);
+        let sun_pos = cam_pos + sun_dir * 40.0;
+        let sun_color = lerp_color(Color::from_rgba(255, 235, 150, 255), Color::from_rgba(225, 228, 242, 255), nightness);
+        draw_sphere(sun_pos, 2.8, None, sun_color);
+
         draw_grid(20, 1.0, Color::from_rgba(0, 0, 0, 60), Color::from_rgba(200, 200, 200, 40));
+        let light = 1.0 - nightness * 0.6;
         for (pos, block) in &world {
             let p = vec3(pos.0 as f32 + 0.5, pos.1 as f32 + 0.5, pos.2 as f32 + 0.5);
             let dist = (p - cam_pos).length();
-            let fog = ((dist - 20.0) / 20.0).clamp(0.0, 0.85);
-            let c = lerp_color(block.color(), sky, fog);
-            draw_cube(p, vec3(1.0, 1.0, 1.0), None, c);
+            let fog = ((dist - 22.0) / 24.0).clamp(0.0, 0.75);
+            let b = (1.0 - fog) * light;
+            let tex = match block {
+                Block::Grass => &tex_grass,
+                Block::Dirt => &tex_dirt,
+                Block::Stone => &tex_stone,
+                Block::Wood => &tex_wood,
+                Block::Sand => &tex_sand,
+                Block::Glass => &tex_glass,
+                Block::Brick => &tex_brick,
+                Block::Snow => &tex_snow,
+            };
+            draw_cube(p, vec3(1.0, 1.0, 1.0), Some(tex), Color::new(b, b, b, 1.0));
+        }
+        // เงาใต้ตัวละคร (blob shadow)
+        let shadow = Color::from_rgba(0, 0, 0, 90);
+        draw_cube(vec3(cam_pos.x, 0.03, cam_pos.z), vec3(0.7, 0.03, 0.7), None, shadow);
+        for w in &wolves {
+            draw_cube(vec3(w.pos.x, 0.03, w.pos.z), vec3(0.8, 0.03, 0.8), None, shadow);
         }
         // อนุภาคทุบบล็อก
         for p in &particles {
