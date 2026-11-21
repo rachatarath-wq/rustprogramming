@@ -253,7 +253,7 @@ async fn main() {
     let mut selected = Block::Grass;
 
     // --- สถานะ survival ---
-    let mut time_of_day: f32 = 0.3;
+    let mut time_of_day: f32 = 0.0; // เริ่มตอนเที่ยง (กลางวัน มีเวลาเก็บแอปเปิ้ลก่อนมืด)
     let mut hp: f32 = 100.0;
     let mut hunger: f32 = 100.0;
     let mut apples: i32 = 0;
@@ -264,6 +264,12 @@ async fn main() {
     // โหมดเล่นอัตโนมัติ (AI เล่นให้ดู)
     let mut autoplay = false;
     let mut auto_attack_cd: f32 = 0.0;
+    // ชนะเมื่อรอดกลางคืน + ตรวจจับการติดขัดของ AI
+    let mut survived = false;
+    let mut prev_night = false;
+    let mut stuck_timer: f32 = 0.0;
+    let mut last_auto_pos = cam_pos;
+    let mut was_auto_moving = false;
 
     let spawn_points: [(f32, f32, f32); 4] =
         [(-7.0, 2.0, -7.0), (7.0, 2.0, 7.0), (-7.0, 2.0, 7.0), (7.0, 2.0, -7.0)];
@@ -284,6 +290,11 @@ async fn main() {
         let day_factor = (time_of_day * std::f32::consts::TAU).cos(); // 1=เที่ยง, -1=เที่ยงคืน
         let nightness = (-day_factor).clamp(0.0, 1.0); // 0=กลางวัน, 1=กลางคืน
         let is_night = day_factor < -0.2;
+        // รอดกลางคืน (กลางคืน → กลางวัน) = ชนะ
+        if !is_night && prev_night {
+            survived = true;
+        }
+        prev_night = is_night;
 
         // --- เปิด/ปิดโหมดเล่นอัตโนมัติ (ปุ่ม P) ---
         if is_key_pressed(KeyCode::P) {
@@ -300,6 +311,15 @@ async fn main() {
         // --- โหมดเล่นอัตโนมัติ: AI เดินหาแอปเปิ้ล + สู้หมาป่า ---
         let mut auto_dir = Vec3::ZERO;
         if autoplay {
+            // ตรวจจับการติดขัด (เฟรมที่แล้วกำลังเดิน แต่ขยับแทบไม่ได้)
+            if was_auto_moving {
+                let moved = (cam_pos - last_auto_pos).length();
+                if moved < 0.05 {
+                    stuck_timer += dt;
+                } else {
+                    stuck_timer = 0.0;
+                }
+            }
             let mut target: Option<Vec3> = None;
             let mut min_d = f32::MAX;
             let mut target_is_wolf = false;
@@ -330,6 +350,10 @@ async fn main() {
                     yaw = dirn.x.atan2(dirn.z);
                     pitch = (to.y / hd).atan().clamp(-1.5, 1.5);
                     auto_dir = dirn;
+                }
+                // หยุดเดินเมื่ออยู่ใกล้หมาป่าพอ (ยืนตี ไม่วิ่งชน)
+                if target_is_wolf && min_d < 2.0 {
+                    auto_dir = Vec3::ZERO;
                 }
                 // ตีหมาป่าเมื่อเข้าใกล้พอ
                 if target_is_wolf && min_d < 2.5 {
@@ -384,9 +408,10 @@ async fn main() {
 
         vel.y -= GRAVITY * dt;
         vel.y = vel.y.max(-30.0);
-        if is_key_pressed(KeyCode::Space) && grounded {
+        if grounded && (is_key_pressed(KeyCode::Space) || (autoplay && stuck_timer > 0.4)) {
             vel.y = JUMP_SPEED;
             grounded = false;
+            stuck_timer = 0.0;
         }
 
         let nx = cam_pos.x + vel.x * dt;
@@ -581,8 +606,8 @@ async fn main() {
         // หมาป่า
         for w in &wolves {
             // เสาแสงแดงเหนือหมาป่า (มองเห็นตำแหน่งจากไกล)
-            draw_cube(vec3(w.pos.x, w.pos.y + 2.5, w.pos.z), vec3(0.3, 5.0, 0.3), None, Color::from_rgba(255, 45, 45, 110));
-            draw_cube_wires(vec3(w.pos.x, w.pos.y + 2.5, w.pos.z), vec3(0.3, 5.0, 0.3), Color::from_rgba(255, 70, 70, 220));
+            draw_cube(vec3(w.pos.x, w.pos.y + 1.3, w.pos.z), vec3(0.3, 1.6, 0.3), None, Color::from_rgba(255, 45, 45, 110));
+            draw_cube_wires(vec3(w.pos.x, w.pos.y + 1.3, w.pos.z), vec3(0.3, 1.6, 0.3), Color::from_rgba(255, 70, 70, 220));
             let to_player = (cam_pos - w.pos).normalize();
             let body = w.pos + vec3(0.0, 0.2, 0.0);
             draw_cube(body, vec3(0.6, 0.5, 0.9), None, Color::from_rgba(90, 90, 95, 255));
@@ -677,9 +702,16 @@ async fn main() {
             let dot_y = radar_cy - rel_angle.cos() * 35.0;
             draw_circle(dot_x, dot_y, 5.0, RED);
         }
+        if survived {
+            draw_text("YOU SURVIVED THE NIGHT! (รอดถึงเช้าแล้ว!)", screen_width() / 2.0 - 280.0, 200.0, 42.0, GOLD);
+            draw_text("ชนะแล้ว! เล่นต่อได้ หรือกด F10 ออก", screen_width() / 2.0 - 150.0, 252.0, 26.0, WHITE);
+        }
         if !mouse_grabbed {
             draw_text("Mouse released - click the window to grab again", 20.0, 140.0, 20.0, YELLOW);
         }
+
+        last_auto_pos = cam_pos;
+        was_auto_moving = auto_dir != Vec3::ZERO;
 
         next_frame().await
     }
