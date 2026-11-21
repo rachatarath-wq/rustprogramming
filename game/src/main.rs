@@ -236,6 +236,9 @@ async fn main() {
     let snd_step = load_sound_from_bytes(include_bytes!("../assets/step.wav")).await.ok();
     let snd_growl = load_sound_from_bytes(include_bytes!("../assets/growl.wav")).await.ok();
 
+    // ฟอนต์ไทย (Noto Sans Thai) สำหรับข้อความภาษาไทย
+    let thai_font = load_ttf_font_from_bytes(include_bytes!("../assets/NotoSansThai.ttf")).unwrap();
+
     // --- โลก ---
     let mut world = load_world(SAVE_FILE);
     if world.is_empty() {
@@ -675,7 +678,7 @@ async fn main() {
         // --- HUD ---
         draw_text("WASD: walk | Space: jump | LMB: hit/break | RMB: place | E: eat | V: view | T: home | P: auto | Esc: mouse | F10: quit", 20.0, 30.0, 22.0, WHITE);
         if autoplay {
-            draw_text(">> AUTO-PLAY (AI เล่นให้ดู) - กด P เพื่อคุมเอง <<", 20.0, 168.0, 30.0, GOLD);
+            draw_text_ex(">> AUTO-PLAY (AI เล่นให้ดู) - กด P เพื่อคุมเอง <<", 20.0, 168.0, TextParams { font: Some(&thai_font), font_size: 30, font_scale: 1.0, font_scale_aspect: 1.0, rotation: 0.0, color: GOLD });
         }
         // แถบเลือด
         draw_rectangle(20.0, 62.0, 200.0, 16.0, Color::from_rgba(0, 0, 0, 180));
@@ -703,8 +706,8 @@ async fn main() {
             draw_circle(dot_x, dot_y, 5.0, RED);
         }
         if survived {
-            draw_text("YOU SURVIVED THE NIGHT! (รอดถึงเช้าแล้ว!)", screen_width() / 2.0 - 280.0, 200.0, 42.0, GOLD);
-            draw_text("ชนะแล้ว! เล่นต่อได้ หรือกด F10 ออก", screen_width() / 2.0 - 150.0, 252.0, 26.0, WHITE);
+            draw_text("YOU SURVIVED THE NIGHT!", screen_width() / 2.0 - 250.0, 190.0, 44.0, GOLD);
+            draw_text_ex("รอดถึงเช้าแล้ว! ชนะ! เล่นต่อได้ หรือกด F10 ออก", screen_width() / 2.0 - 220.0, 252.0, TextParams { font: Some(&thai_font), font_size: 30, font_scale: 1.0, font_scale_aspect: 1.0, rotation: 0.0, color: WHITE });
         }
         if !mouse_grabbed {
             draw_text("Mouse released - click the window to grab again", 20.0, 140.0, 20.0, YELLOW);
