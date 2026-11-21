@@ -322,8 +322,8 @@ async fn main() {
         // --- มองรอบด้วยเมาส์ (เฉพาะตอนเล่นเอง) ---
         if mouse_grabbed && !autoplay {
             let mouse_delta = mouse_delta_position();
-            yaw -= mouse_delta.x * 0.003;
-            pitch = (pitch - mouse_delta.y * 0.003).clamp(-1.5, 1.5);
+            yaw -= mouse_delta.x * 0.008;
+            pitch = (pitch - mouse_delta.y * 0.008).clamp(-1.5, 1.5);
         }
 
         // --- โหมดเล่นอัตโนมัติ: AI เดินหาแอปเปิ้ล + สู้หมาป่า ---
