@@ -294,6 +294,12 @@ async fn main() {
         if is_key_pressed(KeyCode::R) {
             save_world(&world, SAVE_FILE);
         }
+        // ย้อนกลับจุดเกิดด้วยปุ่ม T
+        if is_key_pressed(KeyCode::T) {
+            cam_pos = vec3(4.0, 6.0, 4.0);
+            vel = Vec3::ZERO;
+            grounded = false;
+        }
 
         clear_background(SKYBLUE);
 
@@ -312,6 +318,8 @@ async fn main() {
             let p = vec3(pos.0 as f32 + 0.5, pos.1 as f32 + 0.5, pos.2 as f32 + 0.5);
             draw_cube(p, vec3(1.0, 1.0, 1.0), None, block.color());
         }
+        // ไฟสัญญาณจุดเกิด (beacon สีทอง มองเห็นแต่ไกล)
+        draw_cube_wires(vec3(4.0, 3.0, 4.0), vec3(0.4, 4.0, 0.4), GOLD);
 
         // --- เล็งบล็อก: ทุบ (คลิกซ้าย) / วาง (คลิกขวา) ---
         if let Some((hit, normal)) = raycast(cam_pos, forward, &world, REACH) {
@@ -338,7 +346,7 @@ async fn main() {
         set_default_camera();
 
         // --- HUD ---
-        draw_text("Mini Roblox - LMB break, RMB place, WASD move, Space jump, R save", 20.0, 30.0, 26.0, WHITE);
+        draw_text("Mini Roblox - LMB break, RMB place, WASD move, Space jump, R save, T respawn", 20.0, 30.0, 26.0, WHITE);
         draw_text(&format!("Block (1-8): {} | Blocks: {} | FPS {}", selected.name(), world.len(), get_fps()), 20.0, 62.0, 26.0, WHITE);
 
         next_frame().await
