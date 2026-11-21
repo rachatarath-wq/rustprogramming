@@ -967,8 +967,22 @@ async fn main() {
         let light = 1.0 - nightness * 0.6;
         for (pos, block) in &world {
             let p = vec3(pos.0 as f32 + 0.5, pos.1 as f32 + 0.5, pos.2 as f32 + 0.5);
-            let dist = (p - cam_pos).length();
-            let fog = ((dist - 22.0) / 24.0).clamp(0.0, 0.75);
+            let d2 = (p - cam_pos).length_squared();
+            if d2 > 45.0 * 45.0 {
+                continue; // ไกลเกินหมอก ไม่ต้องวาด (ประหยัดมาก)
+            }
+            // ข้ามบล็อกที่ฝังอยู่ (มีเพื่อนบ้านครบ 6 ด้าน) — วาดเฉพาะผิวที่มองเห็น
+            if world.contains_key(&(pos.0, pos.1 + 1, pos.2))
+                && world.contains_key(&(pos.0, pos.1 - 1, pos.2))
+                && world.contains_key(&(pos.0 + 1, pos.1, pos.2))
+                && world.contains_key(&(pos.0 - 1, pos.1, pos.2))
+                && world.contains_key(&(pos.0, pos.1, pos.2 + 1))
+                && world.contains_key(&(pos.0, pos.1, pos.2 - 1))
+            {
+                continue;
+            }
+            let dist = d2.sqrt();
+            let fog = ((dist - 20.0) / 25.0).clamp(0.0, 1.0);
             let b = (1.0 - fog) * light;
             let tex = match block {
                 Block::Grass => &tex_grass,
