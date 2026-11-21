@@ -236,8 +236,9 @@ async fn main() {
     let snd_step = load_sound_from_bytes(include_bytes!("../assets/step.wav")).await.ok();
     let snd_growl = load_sound_from_bytes(include_bytes!("../assets/growl.wav")).await.ok();
 
-    // ฟอนต์ไทย (Noto Sans Thai) สำหรับข้อความภาษาไทย
-    let thai_font = load_ttf_font_from_bytes(include_bytes!("../assets/NotoSansThai.ttf")).unwrap();
+    // ข้อความไทย (render เป็น PNG ล่วงหน้าด้วย HarfBuzz shaping แล้ว)
+    let thai_win_tex = Texture2D::from_file_with_format(include_bytes!("../assets/thai_win.png"), None);
+    let thai_auto_tex = Texture2D::from_file_with_format(include_bytes!("../assets/thai_auto.png"), None);
 
     // --- โลก ---
     let mut world = load_world(SAVE_FILE);
@@ -273,6 +274,11 @@ async fn main() {
     let mut stuck_timer: f32 = 0.0;
     let mut last_auto_pos = cam_pos;
     let mut was_auto_moving = false;
+    // โหมดฝึก (ไม่มีศัตรู): หัดวาง/ทุบ/ตีหุ่น
+    let mut practice = false;
+    let mut dummy_hits: i32 = 0;
+    let mut dummy_flash: f32 = 0.0;
+    let dummy_pos = vec3(-4.0, 1.9, -3.0);
 
     let spawn_points: [(f32, f32, f32); 4] =
         [(-7.0, 2.0, -7.0), (7.0, 2.0, 7.0), (-7.0, 2.0, 7.0), (7.0, 2.0, -7.0)];
@@ -291,8 +297,8 @@ async fn main() {
         // --- วงจรกลางวัน/กลางคืน ---
         time_of_day = (time_of_day + dt / DAY_LENGTH) % 1.0;
         let day_factor = (time_of_day * std::f32::consts::TAU).cos(); // 1=เที่ยง, -1=เที่ยงคืน
-        let nightness = (-day_factor).clamp(0.0, 1.0); // 0=กลางวัน, 1=กลางคืน
-        let is_night = day_factor < -0.2;
+        let nightness = if practice { 0.0 } else { (-day_factor).clamp(0.0, 1.0) }; // 0=กลางวัน, 1=กลางคืน
+        let is_night = if practice { false } else { day_factor < -0.2 };
         // รอดกลางคืน (กลางคืน → กลางวัน) = ชนะ
         if !is_night && prev_night {
             survived = true;
@@ -302,6 +308,15 @@ async fn main() {
         // --- เปิด/ปิดโหมดเล่นอัตโนมัติ (ปุ่ม P) ---
         if is_key_pressed(KeyCode::P) {
             autoplay = !autoplay;
+        }
+        // --- เปิด/ปิดโหมดฝึก (ปุ่ม M, ไม่มีศัตรู) ---
+        if is_key_pressed(KeyCode::M) {
+            practice = !practice;
+            if practice {
+                wolves.clear();
+                dummy_hits = 0;
+                survived = false;
+            }
         }
 
         // --- มองรอบด้วยเมาส์ (เฉพาะตอนเล่นเอง) ---
@@ -466,10 +481,12 @@ async fn main() {
             break;
         }
 
-        // --- ความหิว ---
-        hunger = (hunger - dt * 0.6).max(0.0);
-        if hunger <= 0.0 {
-            hp -= dt * 2.0;
+        // --- ความหิว (โหมดฝึกไม่หิว) ---
+        if !practice {
+            hunger = (hunger - dt * 0.6).max(0.0);
+            if hunger <= 0.0 {
+                hp -= dt * 2.0;
+            }
         }
         // กินแอปเปิ้ล (E)
         if is_key_pressed(KeyCode::E) && apples > 0 {
@@ -622,6 +639,17 @@ async fn main() {
             draw_cube(head + to_player * 0.2 + eye_r, vec3(0.08, 0.08, 0.02), None, RED);
         }
 
+        // หุ่นฝึก (โหมดฝึก)
+        if practice {
+            if dummy_flash > 0.0 {
+                dummy_flash -= dt;
+            }
+            let dcolor = if dummy_flash > 0.0 { WHITE } else { Color::from_rgba(220, 50, 50, 255) };
+            let to_dummy = (cam_pos - dummy_pos).normalize();
+            draw_cube(dummy_pos, vec3(0.7, 1.8, 0.4), None, dcolor);
+            draw_cube(dummy_pos + to_dummy * 0.21, vec3(0.32, 0.32, 0.05), None, WHITE);
+        }
+
         // ตัวผู้เล่น (บุคคลที่ 3)
         if third_person {
             let skin = Color::from_rgba(230, 190, 150, 255);
@@ -667,6 +695,15 @@ async fn main() {
                     }
                 }
             }
+        } else if practice && mouse_grabbed && is_mouse_button_pressed(MouseButton::Left) {
+            // ตีหุ่นฝึก (โหมดฝึก) เมื่อคลิกซ้ายไม่โดนบล็อก
+            let to_dummy = dummy_pos - cam_pos;
+            let d = to_dummy.length();
+            if d < REACH && forward.dot(to_dummy / d.max(0.001)) > 0.7 {
+                dummy_hits += 1;
+                dummy_flash = 0.25;
+                play(&snd_break);
+            }
         }
         if !mouse_grabbed && is_mouse_button_pressed(MouseButton::Left) {
             mouse_grabbed = true;
@@ -676,9 +713,12 @@ async fn main() {
         set_default_camera();
 
         // --- HUD ---
-        draw_text("WASD: walk | Space: jump | LMB: hit/break | RMB: place | E: eat | V: view | T: home | P: auto | Esc: mouse | F10: quit", 20.0, 30.0, 22.0, WHITE);
+        draw_text("WASD: walk | Space: jump | LMB: hit/break | RMB: place | E: eat | V: view | T: home | P: auto | M: train | Esc: mouse | F10: quit", 20.0, 30.0, 22.0, WHITE);
         if autoplay {
-            draw_text_ex(">> AUTO-PLAY (AI เล่นให้ดู) - กด P เพื่อคุมเอง <<", 20.0, 168.0, TextParams { font: Some(&thai_font), font_size: 30, font_scale: 1.0, font_scale_aspect: 1.0, rotation: 0.0, color: GOLD });
+            draw_texture(&thai_auto_tex, 20.0, 168.0, WHITE);
+        }
+        if practice {
+            draw_text(&format!("PRACTICE MODE (no enemies) | Dummy hits: {} | M: back to survival", dummy_hits), 20.0, 140.0, 24.0, GREEN);
         }
         // แถบเลือด
         draw_rectangle(20.0, 62.0, 200.0, 16.0, Color::from_rgba(0, 0, 0, 180));
@@ -707,7 +747,7 @@ async fn main() {
         }
         if survived {
             draw_text("YOU SURVIVED THE NIGHT!", screen_width() / 2.0 - 250.0, 190.0, 44.0, GOLD);
-            draw_text_ex("รอดถึงเช้าแล้ว! ชนะ! เล่นต่อได้ หรือกด F10 ออก", screen_width() / 2.0 - 220.0, 252.0, TextParams { font: Some(&thai_font), font_size: 30, font_scale: 1.0, font_scale_aspect: 1.0, rotation: 0.0, color: WHITE });
+            draw_texture(&thai_win_tex, screen_width() / 2.0 - thai_win_tex.width() / 2.0, 252.0, WHITE);
         }
         if !mouse_grabbed {
             draw_text("Mouse released - click the window to grab again", 20.0, 140.0, 20.0, YELLOW);
