@@ -1,5 +1,6 @@
 use macroquad::prelude::*;
 use std::collections::HashMap;
+use std::fs;
 
 // ตำแหน่งของบล็อกในโลก = พิกัดจำนวนเต็ม (x, y, z)
 type BlockPos = (i32, i32, i32);
@@ -23,7 +24,7 @@ impl Block {
             Block::Wood => Color::from_rgba(145, 92, 42, 255),
         }
     }
-    // ชื่อสำหรับแสดงผล
+    // ชื่อสำหรับแสดงผล และใช้บันทึก/โหลด
     fn name(&self) -> &str {
         match self {
             Block::Grass => "Grass",
@@ -32,12 +33,23 @@ impl Block {
             Block::Wood => "Wood",
         }
     }
+    fn from_name(name: &str) -> Option<Block> {
+        match name {
+            "Grass" => Some(Block::Grass),
+            "Dirt" => Some(Block::Dirt),
+            "Stone" => Some(Block::Stone),
+            "Wood" => Some(Block::Wood),
+            _ => None,
+        }
+    }
 }
 
 // ระยะเอื้อมมือ (กี่บล็อก)
 const REACH: f32 = 8.0;
 // ความเร็วเดิน
 const SPEED: f32 = 6.0;
+// ไฟล์สำหรับบันทึกโลก
+const SAVE_FILE: &str = "world.txt";
 
 // สร้างโลกเริ่มต้น: พื้นหญ้า + แท่นหิน + เสาไม้
 fn build_world() -> HashMap<BlockPos, Block> {
@@ -56,6 +68,39 @@ fn build_world() -> HashMap<BlockPos, Block> {
     // เสาไม้สูง 3 บล็อก
     for y in 1..4 {
         w.insert((5, y, 5), Block::Wood);
+    }
+    w
+}
+
+// บันทึกโลกเป็นไฟล์ข้อความ บรรทัดละ "x y z ชนิด"
+fn save_world(world: &HashMap<BlockPos, Block>, path: &str) {
+    let mut out = String::new();
+    for ((x, y, z), b) in world {
+        out.push_str(&format!("{} {} {} {}\n", x, y, z, b.name()));
+    }
+    if let Err(e) = fs::write(path, out) {
+        eprintln!("บันทึกไม่สำเร็จ: {e}");
+    } else {
+        println!("บันทึกโลกแล้ว ({} บล็อก)", world.len());
+    }
+}
+
+// โหลดโลกจากไฟล์ (ถ้าไม่มีไฟล์ คืน HashMap ว่าง)
+fn load_world(path: &str) -> HashMap<BlockPos, Block> {
+    let mut w = HashMap::new();
+    if let Ok(data) = fs::read_to_string(path) {
+        for line in data.lines() {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() == 4 {
+                if let (Ok(x), Ok(y), Ok(z)) =
+                    (parts[0].parse(), parts[1].parse(), parts[2].parse())
+                {
+                    if let Some(b) = Block::from_name(parts[3]) {
+                        w.insert((x, y, z), b);
+                    }
+                }
+            }
+        }
     }
     w
 }
@@ -123,7 +168,12 @@ fn raycast(
 
 #[macroquad::main("Mini Roblox")]
 async fn main() {
-    let mut world = build_world();
+    // โหลดโลกจากไฟล์ก่อน ถ้าไม่มีก็สร้างโลกเริ่มต้น
+    let mut world = load_world(SAVE_FILE);
+    if world.is_empty() {
+        world = build_world();
+    }
+
     let mut cam_pos = vec3(8.0, 6.0, 8.0);
     // หันกล้องมาที่จุดกำเนิด
     let mut yaw: f32 = -135.0_f32.to_radians();
@@ -166,6 +216,10 @@ async fn main() {
         if is_key_pressed(KeyCode::Key2) { selected = Block::Dirt; }
         if is_key_pressed(KeyCode::Key3) { selected = Block::Stone; }
         if is_key_pressed(KeyCode::Key4) { selected = Block::Wood; }
+        // บันทึกโลกด้วยปุ่ม R
+        if is_key_pressed(KeyCode::R) {
+            save_world(&world, SAVE_FILE);
+        }
 
         clear_background(SKYBLUE);
 
@@ -210,8 +264,8 @@ async fn main() {
         set_default_camera();
 
         // --- HUD ---
-        draw_text("Mini Roblox - LMB break, RMB place, WASD move, Space/Shift up/down", 20.0, 30.0, 26.0, WHITE);
-        draw_text(&format!("Block (1-4): {} | FPS {}", selected.name(), get_fps()), 20.0, 62.0, 26.0, WHITE);
+        draw_text("Mini Roblox - LMB break, RMB place, WASD move, R save", 20.0, 30.0, 26.0, WHITE);
+        draw_text(&format!("Block (1-4): {} | Blocks: {} | FPS {}", selected.name(), world.len(), get_fps()), 20.0, 62.0, 26.0, WHITE);
 
         next_frame().await
     }
