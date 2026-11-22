@@ -894,17 +894,18 @@ async fn main() {
         .normalize();
         let right = vec3(-yaw.cos(), 0.0, yaw.sin());
 
-        // --- เดิน ---
+        // --- เดิน (ใช้ทิศทางแบน ไม่รวมมุมก้มเงย → ได้ความเร็วเต็มเสมอ) ---
+        let flat_fwd = vec3(yaw.sin(), 0.0, yaw.cos());
         let mut horiz = Vec3::ZERO;
         if autoplay {
             horiz = auto_dir * move_speed;
         } else if !settings_open && !gpad_menu_open {
-            if is_key_down(KeyCode::W) { horiz += forward; }
-            if is_key_down(KeyCode::S) { horiz -= forward; }
+            if is_key_down(KeyCode::W) { horiz += flat_fwd; }
+            if is_key_down(KeyCode::S) { horiz -= flat_fwd; }
             if is_key_down(KeyCode::D) { horiz += right; }
             if is_key_down(KeyCode::A) { horiz -= right; }
             if gp_move != Vec2::ZERO {
-                horiz += forward * (-gp_move.y) + right * gp_move.x;
+                horiz += flat_fwd * (-gp_move.y) + right * gp_move.x;
             }
             if horiz != Vec3::ZERO {
                 horiz = horiz.normalize() * move_speed;
