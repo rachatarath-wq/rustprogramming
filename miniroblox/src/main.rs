@@ -506,18 +506,22 @@ async fn main() {
     let mut move_speed: f32 = 6.0;
     let mut jump_speed: f32 = 8.0;
     let mut day_length: f32 = 90.0;
+    let mut gpad_inv_x: bool = false;
+    let mut gpad_inv_y: bool = false;
     let mut settings_open = false;
     let mut settings_sel: usize = 0;
     if let Ok(txt) = std::fs::read_to_string(SETTINGS_FILE) {
         for line in txt.lines() {
             let mut it = line.split_whitespace();
             let key = it.next().unwrap_or("");
-            let val = it.next().and_then(|v| v.parse::<f32>().ok());
-            match (key, val) {
-                ("mouse_sens", Some(v)) => mouse_sens = v.clamp(0.005, 0.10),
-                ("move_speed", Some(v)) => move_speed = v.clamp(3.0, 12.0),
-                ("jump_speed", Some(v)) => jump_speed = v.clamp(5.0, 12.0),
-                ("day_length", Some(v)) => day_length = v.clamp(30.0, 300.0),
+            let val = it.next().unwrap_or("");
+            match key {
+                "mouse_sens" => if let Ok(v) = val.parse::<f32>() { mouse_sens = v.clamp(0.005, 0.10) },
+                "move_speed" => if let Ok(v) = val.parse::<f32>() { move_speed = v.clamp(3.0, 12.0) },
+                "jump_speed" => if let Ok(v) = val.parse::<f32>() { jump_speed = v.clamp(5.0, 12.0) },
+                "day_length" => if let Ok(v) = val.parse::<f32>() { day_length = v.clamp(30.0, 300.0) },
+                "gpad_inv_x" => gpad_inv_x = val == "1",
+                "gpad_inv_y" => gpad_inv_y = val == "1",
                 _ => {}
             }
         }
@@ -623,8 +627,10 @@ async fn main() {
                 let rx = pad.value(Axis::RightStickX);
                 let ry = pad.value(Axis::RightStickY);
                 const DZ: f32 = 0.15; // dead zone กันจอยดริฟต์
-                if lx.abs() > DZ || ly.abs() > DZ { gp_move = vec2(lx, ly); }
-                if rx.abs() > DZ || ry.abs() > DZ { gp_look = vec2(rx, ry); }
+                let sx = if gpad_inv_x { -1.0 } else { 1.0 };
+                let sy = if gpad_inv_y { -1.0 } else { 1.0 };
+                if lx.abs() > DZ || ly.abs() > DZ { gp_move = vec2(lx * sx, ly * sy); }
+                if rx.abs() > DZ || ry.abs() > DZ { gp_look = vec2(rx * sx, ry * sy); }
                 gp_jump |= pad.is_pressed(Button::South);
                 gp_break |= pad.is_pressed(Button::West);
                 gp_place |= pad.is_pressed(Button::East);
@@ -674,10 +680,10 @@ async fn main() {
         }
         if settings_open {
             if is_key_pressed(KeyCode::Up) {
-                settings_sel = (settings_sel + 3) % 4;
+                settings_sel = (settings_sel + 5) % 6;
             }
             if is_key_pressed(KeyCode::Down) {
-                settings_sel = (settings_sel + 1) % 4;
+                settings_sel = (settings_sel + 1) % 6;
             }
             let dir = if is_key_pressed(KeyCode::Left) {
                 -1.0
@@ -691,11 +697,14 @@ async fn main() {
                     0 => mouse_sens = (mouse_sens + dir * 0.005).clamp(0.005, 0.10),
                     1 => move_speed = (move_speed + dir * 0.5).clamp(3.0, 12.0),
                     2 => jump_speed = (jump_speed + dir * 0.5).clamp(5.0, 12.0),
-                    _ => day_length = (day_length + dir * 15.0).clamp(30.0, 300.0),
+                    3 => day_length = (day_length + dir * 15.0).clamp(30.0, 300.0),
+                    4 => gpad_inv_x = dir > 0.0,
+                    _ => gpad_inv_y = dir > 0.0,
                 }
                 let txt = format!(
-                    "mouse_sens {:.3}\nmove_speed {:.1}\njump_speed {:.1}\nday_length {:.0}\n",
-                    mouse_sens, move_speed, jump_speed, day_length
+                    "mouse_sens {:.3}\nmove_speed {:.1}\njump_speed {:.1}\nday_length {:.0}\ngpad_inv_x {}\ngpad_inv_y {}\n",
+                    mouse_sens, move_speed, jump_speed, day_length,
+                    gpad_inv_x as u8, gpad_inv_y as u8
                 );
                 let _ = std::fs::write(SETTINGS_FILE, txt);
             }
@@ -1401,7 +1410,7 @@ async fn main() {
             let cx = sw / 2.0;
             let cy = sh / 2.0;
             let w = 540.0;
-            let h = 340.0;
+            let h = 430.0;
             let x0 = cx - w / 2.0;
             let y0 = cy - h / 2.0;
             draw_rectangle(x0, y0, w, h, Color::from_rgba(18, 22, 30, 225));
@@ -1412,6 +1421,8 @@ async fn main() {
                 format!("Move Speed: {:.1}", move_speed),
                 format!("Jump Power: {:.1}", jump_speed),
                 format!("Day Length: {:.0} sec", day_length),
+                format!("GPad Invert X: {}", if gpad_inv_x { "ON" } else { "OFF" }),
+                format!("GPad Invert Y: {}", if gpad_inv_y { "ON" } else { "OFF" }),
             ];
             for (i, r) in rows.iter().enumerate() {
                 let y = y0 + 108.0 + i as f32 * 46.0;
