@@ -446,10 +446,8 @@ async fn main() {
         .filter(|s| s.is_some())
         .count();
     println!("เสียงโหลด {}/10{} +{:.1}s", sound_n, if sound_n == 0 { " — ไม่มี sound device" } else { "" }, t0.elapsed().as_secs_f32());
-    // เพลงแบ็กกราวด์: เล่นวนลูป (สร้างเอง ไม่มีลิขสิทธิ์)
-    if let Some(bgm) = &snd_bgm {
-        play_sound(bgm, PlaySoundParams { looped: true, volume: 0.3 });
-    }
+    // เพลงแบ็กกราวด์: เล่นวนลูปแบบ manual (สร้างเอง ไม่มีลิขสิทธิ์)
+    let mut bgm_timer: f32 = 8.0; // เริ่ม > 0 → เล่นทันทีในเฟรมแรก
     draw_loading(0.3, "Loading textures...");
     next_frame().await;
 
@@ -619,6 +617,15 @@ async fn main() {
 
     loop {
         let dt = get_frame_time();
+
+        // --- เพลงแบ็กกราวด์: วนลูปแบบ manual ทุก 8s (กันปัญหา loop ของ audio backend) ---
+        bgm_timer += dt;
+        if bgm_timer >= 8.0 {
+            bgm_timer = 0.0;
+            if let Some(bgm) = &snd_bgm {
+                play_sound(bgm, PlaySoundParams { looped: false, volume: 0.3 });
+            }
+        }
 
         // --- วงจรกลางวัน/กลางคืน ---
         time_of_day = (time_of_day + dt / day_length) % 1.0;
