@@ -437,14 +437,19 @@ async fn main() {
     let snd_boss_growl = load_sound_from_bytes(include_bytes!("../assets/boss_growl.wav")).await.ok();
     let snd_boss_die = load_sound_from_bytes(include_bytes!("../assets/boss_die.wav")).await.ok();
     let snd_oof = load_sound_from_bytes(include_bytes!("../assets/oof.wav")).await.ok();
+    let snd_bgm = load_sound_from_bytes(include_bytes!("../assets/bgm.wav")).await.ok();
 
     // วินิจฉัยเสียง: พิมพ์จำนวนเสียงที่โหลดได้ (ถ้า 0 = ไม่มี sound device)
     let sound_n = [&snd_break, &snd_place, &snd_hurt, &snd_eat, &snd_step, &snd_growl,
-        &snd_boss_growl, &snd_boss_die, &snd_oof]
+        &snd_boss_growl, &snd_boss_die, &snd_oof, &snd_bgm]
         .iter()
         .filter(|s| s.is_some())
         .count();
-    println!("เสียงโหลด {}/9{} +{:.1}s", sound_n, if sound_n == 0 { " — ไม่มี sound device" } else { "" }, t0.elapsed().as_secs_f32());
+    println!("เสียงโหลด {}/10{} +{:.1}s", sound_n, if sound_n == 0 { " — ไม่มี sound device" } else { "" }, t0.elapsed().as_secs_f32());
+    // เพลงแบ็กกราวด์: เล่นวนลูป (สร้างเอง ไม่มีลิขสิทธิ์)
+    if let Some(bgm) = &snd_bgm {
+        play_sound(bgm, PlaySoundParams { looped: true, volume: 0.3 });
+    }
     draw_loading(0.3, "Loading textures...");
     next_frame().await;
 
