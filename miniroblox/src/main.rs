@@ -86,7 +86,7 @@ const REACH: f32 = 8.0;
 const SPEED: f32 = 6.0;
 const GRAVITY: f32 = 22.0;
 const JUMP_SPEED: f32 = 8.0;
-const SAVE_FILE: &str = "world_v3.txt";
+const SAVE_FILE: &str = "world_v4.txt";
 // ความยาว 1 รอบกลางวัน+กลางคืน (วินาที)
 const DAY_LENGTH: f32 = 90.0;
 const WORLD_SIZE: i32 = 32;
@@ -125,6 +125,29 @@ fn terrain_height(x: i32, z: i32) -> i32 {
         + 2.0 * ((xf + 1.7) * 0.13).sin() * ((zf + 0.6) * 0.19).cos()
         + 1.5 * (xf * 0.07).sin() * (zf * 0.09).cos();
     h.round() as i32
+}
+
+// ความสูงของที่ราบสูงจุดเกิด = จุดสูงสุดของภูมิประเทศรอบกลาง (13x13)
+// ใช้ร่วมกันระหว่าง build_world และ main เพื่อให้จุดเกิดตรงกับลานจริง
+fn plaza_height() -> i32 {
+    let cx = WORLD_SIZE / 2;
+    let mut h = terrain_height(cx, cx);
+    for x in cx - 6..=cx + 6 {
+        for z in cx - 6..=cx + 6 {
+            h = h.max(terrain_height(x, z));
+        }
+    }
+    h
+}
+
+// ความสูงผิวดินจริง ณ (x,z) — บนที่ราบสูงจุดเกิดจะสูงกว่า terrain_height
+fn surface_height(x: i32, z: i32) -> i32 {
+    let cx = WORLD_SIZE / 2;
+    if (x - cx).abs() <= 4 && (z - cx).abs() <= 4 {
+        plaza_height()
+    } else {
+        terrain_height(x, z)
+    }
 }
 
 // สร้างต้นไม้ (ลำต้น + ใบ)
@@ -187,10 +210,11 @@ fn build_world(seed: u64) -> HashMap<BlockPos, Block> {
         }
     }
 
-    // 2. ลานกลางหิน 5x5 (จุดเกิด + ที่กำบัง)
-    let plaza_h = terrain_height(cx, cx);
-    for x in cx - 2..=cx + 2 {
-        for z in cx - 2..=cx + 2 {
+    // 2. ที่ราบสูงกลางแผนที่ 9x9 (จุดเกิด) — ยกเป็นจุดสูงสุดของบริเวณ
+    //    เพื่อให้จุดเกิดอยู่บนที่สูงเสมอ เดินลงออกได้ทุกทิศ ไม่ติดหลุม
+    let plaza_h = plaza_height();
+    for x in cx - 4..=cx + 4 {
+        for z in cx - 4..=cx + 4 {
             for y in 0..=terrain_height(x, z) {
                 w.remove(&(x, y, z));
             }
@@ -446,9 +470,9 @@ async fn main() {
     draw_loading(0.92, "Rendering first frame...");
     next_frame().await;
 
-    // จุดเกิด (กลางแผนที่ บนลานหิน)
+    // จุดเกิด (กลางแผนที่ บนที่ราบสูง)
     let cx = WORLD_SIZE / 2;
-    let mut plaza_h = terrain_height(cx, cx);
+    let mut plaza_h = plaza_height();
     let mut spawn_pos = vec3(cx as f32 + 0.5, plaza_h as f32 + 2.0, cx as f32 + 0.5);
 
     // --- ผู้เล่น ---
@@ -513,7 +537,7 @@ async fn main() {
     for _ in 0..8 {
         let ax = arng.range(3, WORLD_SIZE - 4);
         let az = arng.range(3, WORLD_SIZE - 4);
-        let ay = terrain_height(ax, az) as f32 + 1.2;
+        let ay = surface_height(ax, az) as f32 + 1.2;
         apple_items.push(Apple { pos: vec3(ax as f32, ay, az as f32), taken: false });
     }
 
@@ -592,7 +616,7 @@ async fn main() {
             let mut target_is_wolf = false;
             if !shelter_built && !is_night && day_factor < 0.3 {
                 // ตอนเย็น: กลับไปจุดเกิดแล้วสร้างกำแพงกันหมาป่า
-                let home = vec3(4.5, cam_pos.y, 4.5);
+                let home = vec3(spawn_pos.x, cam_pos.y, spawn_pos.z);
                 let dist_home = (home - cam_pos).length();
                 if dist_home > 1.5 {
                     target = Some(home);
@@ -634,7 +658,7 @@ async fn main() {
                     }
                 }
                 if target.is_none() {
-                    target = Some(vec3(4.5, cam_pos.y, 4.5));
+                    target = Some(vec3(spawn_pos.x, cam_pos.y, spawn_pos.z));
                 }
             } else {
                 // กลางวัน: เก็บแอปเปิ้ลใกล้สุด
@@ -782,7 +806,7 @@ async fn main() {
             seed = seed.wrapping_add(0x9E3779B97F4A7C15);
             TERRAIN_SEED.store(seed, std::sync::atomic::Ordering::Relaxed);
             world = build_world(seed);
-            plaza_h = terrain_height(cx, cx);
+            plaza_h = plaza_height();
             spawn_pos = vec3(cx as f32 + 0.5, plaza_h as f32 + 2.0, cx as f32 + 0.5);
             // ที่กำบังใหม่รอบจุดเกิด
             shelter_blocks.clear();
@@ -809,7 +833,7 @@ async fn main() {
             for _ in 0..8 {
                 let ax = arng.range(3, WORLD_SIZE - 4);
                 let az = arng.range(3, WORLD_SIZE - 4);
-                let ay = terrain_height(ax, az) as f32 + 1.2;
+                let ay = surface_height(ax, az) as f32 + 1.2;
                 apple_items.push(Apple { pos: vec3(ax as f32, ay, az as f32), taken: false });
             }
             level = 1;
@@ -1063,7 +1087,10 @@ async fn main() {
             let s = 0.14 * (p.life / 0.7).max(0.05);
             draw_cube(p.pos, vec3(s, s, s), None, p.color);
         }
-        draw_cube_wires(vec3(4.0, 3.0, 4.0), vec3(0.4, 4.0, 0.4), GOLD);
+        // เสาแสงที่จุดเกิด (มองเห็นจากไกล — รู้ทางกลับบ้าน)
+        let beacon_base = vec3(spawn_pos.x, plaza_h as f32 + 1.0, spawn_pos.z);
+        draw_cube(beacon_base + vec3(0.0, 7.0, 0.0), vec3(0.6, 7.0, 0.6), None, Color::from_rgba(255, 200, 60, 90));
+        draw_cube_wires(beacon_base + vec3(0.0, 7.0, 0.0), vec3(0.6, 7.0, 0.6), GOLD);
 
         // ดาบ (tool ในมือ — กวัดแกว่งตอนฟัน)
         if sword_swing > 0.0 {
@@ -1215,6 +1242,15 @@ async fn main() {
         draw_circle(radar_cx, radar_cy, 45.0, Color::from_rgba(0, 0, 0, 130));
         draw_circle_lines(radar_cx, radar_cy, 45.0, 2.0, Color::from_rgba(255, 255, 255, 120));
         draw_circle(radar_cx, radar_cy, 4.0, GREEN);
+        // จุดเกิด (home) บนเรดาร์ — จุดน้ำเงิน ชี้ทางกลับบ้าน
+        let home_rel = vec3(spawn_pos.x - cam_pos.x, 0.0, spawn_pos.z - cam_pos.z);
+        if home_rel.length() > 3.0 {
+            let home_angle = home_rel.x.atan2(home_rel.z);
+            let home_rel_angle = home_angle - yaw;
+            let hx = radar_cx - home_rel_angle.sin() * 35.0;
+            let hy = radar_cy - home_rel_angle.cos() * 35.0;
+            draw_circle(hx, hy, 5.0, BLUE);
+        }
         for w in &wolves {
             let rel = w.pos - cam_pos;
             let angle = rel.x.atan2(rel.z);
