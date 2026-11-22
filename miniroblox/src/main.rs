@@ -612,8 +612,8 @@ async fn main() {
             }
         }
 
-        // --- เมนูตั้งค่า (F2) ---
-        if is_key_pressed(KeyCode::F2) {
+        // --- เมนูตั้งค่า (F2 หรือ O) ---
+        if is_key_pressed(KeyCode::F2) || is_key_pressed(KeyCode::O) {
             settings_open = !settings_open;
             if settings_open {
                 mouse_grabbed = false;
@@ -1347,7 +1347,7 @@ async fn main() {
             let y0 = cy - h / 2.0;
             draw_rectangle(x0, y0, w, h, Color::from_rgba(18, 22, 30, 225));
             draw_rectangle_lines(x0, y0, w, h, 2.0, GOLD);
-            draw_text("SETTINGS (F2 = close)", cx - 170.0, y0 + 46.0, 32.0, GOLD);
+            draw_text("SETTINGS (F2 or O = close)", cx - 205.0, y0 + 46.0, 32.0, GOLD);
             let rows = [
                 format!("Mouse Sensitivity: {:.3}", mouse_sens),
                 format!("Move Speed: {:.1}", move_speed),
