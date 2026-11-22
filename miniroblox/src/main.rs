@@ -613,9 +613,11 @@ async fn main() {
         let mut gp_sel_next = false;
         let mut gp_sel_prev = false;
         let mut gp_settings = false;
+        let mut gp_connected = false;
         if let Some(g) = gilrs.as_mut() {
             while g.next_event().is_some() {}
             for (_id, pad) in g.gamepads() {
+                gp_connected = true;
                 let lx = pad.value(Axis::LeftStickX);
                 let ly = pad.value(Axis::LeftStickY);
                 let rx = pad.value(Axis::RightStickX);
@@ -1435,6 +1437,31 @@ async fn main() {
                 draw_rectangle(x, y0, slot, slot, if sel { Color::from_rgba(255, 255, 255, 90) } else { Color::from_rgba(0, 0, 0, 130) });
                 draw_rectangle_lines(x, y0, slot, slot, 2.0, if sel { WHITE } else { Color::from_rgba(255, 255, 255, 60) });
                 draw_rectangle(x + 9.0, y0 + 9.0, slot - 18.0, slot - 18.0, b.color());
+            }
+        }
+
+        // --- สถานะเกมแพด (มุมขวาล่าง ใช้ทดสอบจอย) ---
+        {
+            let gx = screen_width() - 560.0;
+            let gy = screen_height() - 58.0;
+            if gp_connected {
+                draw_text(
+                    &format!("GAMEPAD: ON  L(x{:.2},y{:.2})  R(x{:.2},y{:.2})", gp_move.x, gp_move.y, gp_look.x, gp_look.y),
+                    gx, gy, 20.0, GREEN,
+                );
+                let mut btn = String::new();
+                if gp_jump { btn.push_str("A "); }
+                if gp_break { btn.push_str("X "); }
+                if gp_place { btn.push_str("B "); }
+                if gp_view { btn.push_str("Y "); }
+                if gp_sel_next { btn.push_str("R "); }
+                if gp_sel_prev { btn.push_str("L "); }
+                if gp_settings { btn.push_str("START "); }
+                if !btn.is_empty() {
+                    draw_text(&format!("button: {}", btn.trim()), gx, gy + 24.0, 20.0, YELLOW);
+                }
+            } else {
+                draw_text("GAMEPAD: none (plug controller - auto detect)", gx, gy, 20.0, Color::from_rgba(255, 255, 255, 150));
             }
         }
 
