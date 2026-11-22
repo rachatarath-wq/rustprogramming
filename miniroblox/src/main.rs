@@ -1,5 +1,6 @@
 use macroquad::prelude::*;
 use macroquad::audio::*;
+use gilrs::{Axis, Button, Gilrs};
 use std::collections::HashMap;
 use std::fs;
 
@@ -17,6 +18,22 @@ enum Block {
     Glass,
     Brick,
     Snow,
+}
+
+// ลำดับบล็อกสำหรับเลื่อนเลือกด้วยจอย (DPad ซ้าย/ขวา)
+fn block_next(b: Block) -> Block {
+    match b {
+        Block::Grass => Block::Dirt, Block::Dirt => Block::Stone, Block::Stone => Block::Wood,
+        Block::Wood => Block::Sand, Block::Sand => Block::Glass, Block::Glass => Block::Brick,
+        Block::Brick => Block::Snow, Block::Snow => Block::Grass,
+    }
+}
+fn block_prev(b: Block) -> Block {
+    match b {
+        Block::Grass => Block::Snow, Block::Snow => Block::Brick, Block::Brick => Block::Glass,
+        Block::Glass => Block::Sand, Block::Sand => Block::Wood, Block::Wood => Block::Stone,
+        Block::Stone => Block::Dirt, Block::Dirt => Block::Grass,
+    }
 }
 
 impl Block {
@@ -84,6 +101,7 @@ struct Apple {
 
 const REACH: f32 = 8.0;
 const GRAVITY: f32 = 22.0;
+const GAMEPAD_LOOK_SPEED: f32 = 3.0; // ความเร็วหมุนมองด้วยจอยขวา (rad/s)
 const SAVE_FILE: &str = "world_v4.txt";
 const SETTINGS_FILE: &str = "settings.txt";
 const WORLD_SIZE: i32 = 32;
@@ -505,6 +523,8 @@ async fn main() {
         }
     }
 
+    let mut gilrs = Gilrs::new().ok();
+
     // --- สถานะ survival ---
     let mut time_of_day: f32 = 0.0; // เริ่มตอนเที่ยง (กลางวัน มีเวลาเก็บแอปเปิ้ลก่อนมืด)
     let mut hp: f32 = 100.0;
@@ -582,6 +602,36 @@ async fn main() {
         let day_factor = (time_of_day * std::f32::consts::TAU).cos(); // 1=เที่ยง, -1=เที่ยงคืน
         let nightness = if practice { 0.0 } else { (-day_factor).clamp(0.0, 1.0) }; // 0=กลางวัน, 1=กลางคืน
         let is_night = if practice { false } else { day_factor < -0.2 };
+
+        // --- อ่านเกมแพด (จอยสติ๊ก) ---
+        let mut gp_move = Vec2::ZERO;
+        let mut gp_look = Vec2::ZERO;
+        let mut gp_jump = false;
+        let mut gp_break = false;
+        let mut gp_place = false;
+        let mut gp_view = false;
+        let mut gp_sel_next = false;
+        let mut gp_sel_prev = false;
+        let mut gp_settings = false;
+        if let Some(g) = gilrs.as_mut() {
+            while g.next_event().is_some() {}
+            for (_id, pad) in g.gamepads() {
+                let lx = pad.value(Axis::LeftStickX);
+                let ly = pad.value(Axis::LeftStickY);
+                let rx = pad.value(Axis::RightStickX);
+                let ry = pad.value(Axis::RightStickY);
+                const DZ: f32 = 0.15; // dead zone กันจอยดริฟต์
+                if lx.abs() > DZ || ly.abs() > DZ { gp_move = vec2(lx, ly); }
+                if rx.abs() > DZ || ry.abs() > DZ { gp_look = vec2(rx, ry); }
+                gp_jump |= pad.is_pressed(Button::South);
+                gp_break |= pad.is_pressed(Button::West);
+                gp_place |= pad.is_pressed(Button::East);
+                gp_view |= pad.is_pressed(Button::North);
+                gp_sel_next |= pad.is_pressed(Button::DPadRight);
+                gp_sel_prev |= pad.is_pressed(Button::DPadLeft);
+                gp_settings |= pad.is_pressed(Button::Start);
+            }
+        }
         // รอดกลางคืน (กลางคืน → กลางวัน) = ผ่าน 1 คืน → เลื่อนระดับ
         if !is_night && prev_night && !game_won {
             nights_survived += 1;
@@ -613,7 +663,7 @@ async fn main() {
         }
 
         // --- เมนูตั้งค่า (F2 หรือ O) ---
-        if is_key_pressed(KeyCode::F2) || is_key_pressed(KeyCode::O) {
+        if is_key_pressed(KeyCode::F2) || is_key_pressed(KeyCode::O) || gp_settings {
             settings_open = !settings_open;
             if settings_open {
                 mouse_grabbed = false;
@@ -654,6 +704,8 @@ async fn main() {
             let mouse_delta = mouse_delta_position();
             yaw -= mouse_delta.x * mouse_sens;
             pitch = (pitch - mouse_delta.y * mouse_sens).clamp(-1.5, 1.5);
+            yaw -= gp_look.x * GAMEPAD_LOOK_SPEED * dt;
+            pitch = (pitch - gp_look.y * GAMEPAD_LOOK_SPEED * dt).clamp(-1.5, 1.5);
         }
 
         // --- โหมดเล่นอัตโนมัติ: AI เดินหาแอปเปิ้ล + สู้หมาป่า ---
@@ -789,6 +841,9 @@ async fn main() {
             if is_key_down(KeyCode::S) { horiz -= forward; }
             if is_key_down(KeyCode::D) { horiz += right; }
             if is_key_down(KeyCode::A) { horiz -= right; }
+            if gp_move != Vec2::ZERO {
+                horiz += forward * (-gp_move.y) + right * gp_move.x;
+            }
             if horiz != Vec3::ZERO {
                 horiz = horiz.normalize() * move_speed;
             }
@@ -807,7 +862,7 @@ async fn main() {
 
         vel.y -= GRAVITY * dt;
         vel.y = vel.y.max(-30.0);
-        if grounded && ((!settings_open && is_key_pressed(KeyCode::Space)) || (autoplay && stuck_timer > 0.4)) {
+        if grounded && ((!settings_open && (is_key_pressed(KeyCode::Space) || gp_jump)) || (autoplay && stuck_timer > 0.4)) {
             vel.y = jump_speed;
             grounded = false;
             stuck_timer = 0.0;
@@ -843,6 +898,8 @@ async fn main() {
         if is_key_pressed(KeyCode::Key6) { selected = Block::Glass; }
         if is_key_pressed(KeyCode::Key7) { selected = Block::Brick; }
         if is_key_pressed(KeyCode::Key8) { selected = Block::Snow; }
+        if gp_sel_next { selected = block_next(selected); }
+        if gp_sel_prev { selected = block_prev(selected); }
         if is_key_pressed(KeyCode::R) {
             save_world(&world, SAVE_FILE);
         }
@@ -851,7 +908,7 @@ async fn main() {
             vel = Vec3::ZERO;
             grounded = false;
         }
-        if is_key_pressed(KeyCode::V) {
+        if is_key_pressed(KeyCode::V) || gp_view {
             third_person = !third_person;
         }
         if is_key_pressed(KeyCode::Escape) {
@@ -1010,7 +1067,7 @@ async fn main() {
         }
 
         // --- ต่อสู้: คลิกซ้ายตีหมาป่า ---
-        if mouse_grabbed && is_mouse_button_pressed(MouseButton::Left) {
+        if mouse_grabbed && (is_mouse_button_pressed(MouseButton::Left) || gp_break) {
             sword_swing = 0.3;
             let mut hit_wolf = false;
             for w in &mut wolves {
@@ -1235,7 +1292,7 @@ async fn main() {
             draw_cube_wires(hp_pos, vec3(1.01, 1.01, 1.01), BLACK);
 
             if mouse_grabbed {
-                if is_mouse_button_pressed(MouseButton::Left) {
+                if is_mouse_button_pressed(MouseButton::Left) || gp_break {
                     let col = world.get(&hit).map(|b| b.color()).unwrap_or(GRAY);
                     world.remove(&hit);
                     play(&snd_break);
@@ -1248,7 +1305,7 @@ async fn main() {
                         });
                     }
                 }
-                if is_mouse_button_pressed(MouseButton::Right) {
+                if is_mouse_button_pressed(MouseButton::Right) || gp_place {
                     let place = (hit.0 + normal.0, hit.1 + normal.1, hit.2 + normal.2);
                     let player_cell = (
                         cam_pos.x.floor() as i32,
