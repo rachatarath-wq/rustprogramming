@@ -86,6 +86,7 @@ const REACH: f32 = 8.0;
 const SPEED: f32 = 6.0;
 const GRAVITY: f32 = 22.0;
 const JUMP_SPEED: f32 = 8.0;
+const MOUSE_SENS: f32 = 0.02; // ความเร็วหมุนมองด้วยเมาส์ (rad/pixel) — เพิ่มให้หมุนคล่องขึ้น
 const SAVE_FILE: &str = "world_v4.txt";
 // ความยาว 1 รอบกลางวัน+กลางคืน (วินาที)
 const DAY_LENGTH: f32 = 90.0;
@@ -596,8 +597,8 @@ async fn main() {
         // --- มองรอบด้วยเมาส์ (เฉพาะตอนเล่นเอง) ---
         if mouse_grabbed && !autoplay {
             let mouse_delta = mouse_delta_position();
-            yaw -= mouse_delta.x * 0.008;
-            pitch = (pitch - mouse_delta.y * 0.008).clamp(-1.5, 1.5);
+            yaw -= mouse_delta.x * MOUSE_SENS;
+            pitch = (pitch - mouse_delta.y * MOUSE_SENS).clamp(-1.5, 1.5);
         }
 
         // --- โหมดเล่นอัตโนมัติ: AI เดินหาแอปเปิ้ล + สู้หมาป่า ---
