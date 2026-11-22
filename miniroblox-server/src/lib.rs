@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 use std::io::{Read, Write};
 use std::net::TcpStream;
 
+pub mod db;
+
 // Messages exchanged between client and server.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Message {
