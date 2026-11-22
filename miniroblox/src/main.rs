@@ -691,6 +691,9 @@ async fn main() {
                 gpad_menu_open = false;
                 mouse_grabbed = false;
                 set_cursor_grab(false);
+            } else {
+                mouse_grabbed = true;
+                set_cursor_grab(true);
             }
         }
         // --- เมนูตั้งค่าเกมแพด (G) ---
@@ -700,6 +703,9 @@ async fn main() {
                 settings_open = false;
                 mouse_grabbed = false;
                 set_cursor_grab(false);
+            } else {
+                mouse_grabbed = true;
+                set_cursor_grab(true);
             }
         }
         if settings_open {
@@ -757,6 +763,9 @@ async fn main() {
             let mouse_delta = mouse_delta_position();
             yaw -= mouse_delta.x * mouse_sens;
             pitch = (pitch - mouse_delta.y * mouse_sens).clamp(-1.5, 1.5);
+        }
+        // --- มองรอบด้วยจอยขวา (อิสระจากเมาส์) ---
+        if !autoplay && !settings_open && !gpad_menu_open {
             yaw -= gp_look.x * gpad_look_speed * dt;
             pitch = (pitch - gp_look.y * gpad_look_speed * dt).clamp(-1.5, 1.5);
         }
@@ -967,8 +976,12 @@ async fn main() {
         if is_key_pressed(KeyCode::Escape) {
             if settings_open {
                 settings_open = false;
+                mouse_grabbed = true;
+                set_cursor_grab(true);
             } else if gpad_menu_open {
                 gpad_menu_open = false;
+                mouse_grabbed = true;
+                set_cursor_grab(true);
             } else {
                 mouse_grabbed = !mouse_grabbed;
                 set_cursor_grab(mouse_grabbed);
@@ -1122,7 +1135,7 @@ async fn main() {
         }
 
         // --- ต่อสู้: คลิกซ้ายตีหมาป่า ---
-        if mouse_grabbed && (is_mouse_button_pressed(MouseButton::Left) || gp_break) {
+        if (mouse_grabbed && is_mouse_button_pressed(MouseButton::Left)) || gp_break {
             sword_swing = 0.3;
             let mut hit_wolf = false;
             for w in &mut wolves {
@@ -1346,31 +1359,29 @@ async fn main() {
             let hp_pos = vec3(hit.0 as f32 + 0.5, hit.1 as f32 + 0.5, hit.2 as f32 + 0.5);
             draw_cube_wires(hp_pos, vec3(1.01, 1.01, 1.01), BLACK);
 
-            if mouse_grabbed {
-                if is_mouse_button_pressed(MouseButton::Left) || gp_break {
-                    let col = world.get(&hit).map(|b| b.color()).unwrap_or(GRAY);
-                    world.remove(&hit);
-                    play(&snd_break);
-                    for _ in 0..12 {
-                        particles.push(Particle {
-                            pos: hp_pos,
-                            vel: vec3(rand::gen_range(-3.0, 3.0), rand::gen_range(1.0, 5.0), rand::gen_range(-3.0, 3.0)),
-                            life: 0.7,
-                            color: col,
-                        });
-                    }
+            if (mouse_grabbed && is_mouse_button_pressed(MouseButton::Left)) || gp_break {
+                let col = world.get(&hit).map(|b| b.color()).unwrap_or(GRAY);
+                world.remove(&hit);
+                play(&snd_break);
+                for _ in 0..12 {
+                    particles.push(Particle {
+                        pos: hp_pos,
+                        vel: vec3(rand::gen_range(-3.0, 3.0), rand::gen_range(1.0, 5.0), rand::gen_range(-3.0, 3.0)),
+                        life: 0.7,
+                        color: col,
+                    });
                 }
-                if is_mouse_button_pressed(MouseButton::Right) || gp_place {
-                    let place = (hit.0 + normal.0, hit.1 + normal.1, hit.2 + normal.2);
-                    let player_cell = (
-                        cam_pos.x.floor() as i32,
-                        cam_pos.y.floor() as i32,
-                        cam_pos.z.floor() as i32,
-                    );
-                    if place != player_cell {
-                        world.insert(place, selected);
-                        play(&snd_place);
-                    }
+            }
+            if (mouse_grabbed && is_mouse_button_pressed(MouseButton::Right)) || gp_place {
+                let place = (hit.0 + normal.0, hit.1 + normal.1, hit.2 + normal.2);
+                let player_cell = (
+                    cam_pos.x.floor() as i32,
+                    cam_pos.y.floor() as i32,
+                    cam_pos.z.floor() as i32,
+                );
+                if place != player_cell {
+                    world.insert(place, selected);
+                    play(&snd_place);
                 }
             }
         } else if practice && mouse_grabbed && is_mouse_button_pressed(MouseButton::Left) {
