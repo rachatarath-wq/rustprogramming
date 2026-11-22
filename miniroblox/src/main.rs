@@ -215,10 +215,11 @@ fn build_world(seed: u64) -> HashMap<BlockPos, Block> {
     let plaza_h = plaza_height();
     for x in cx - 4..=cx + 4 {
         for z in cx - 4..=cx + 4 {
-            for y in 0..=terrain_height(x, z) {
-                w.remove(&(x, y, z));
+            // ถมหินเต็มตั้งแต่ผิวดินเดิมขึ้นไปถึงยอดที่ราบ (ไม่ให้มีช่องว่างใต้ลาน)
+            let th = terrain_height(x, z);
+            for y in th..=plaza_h {
+                w.insert((x, y, z), Block::Stone);
             }
-            w.insert((x, plaza_h, z), Block::Stone);
         }
     }
 
