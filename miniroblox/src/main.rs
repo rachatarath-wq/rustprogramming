@@ -36,6 +36,15 @@ fn block_prev(b: Block) -> Block {
     }
 }
 
+// เซฟค่าตั้งค่าทั้งหมดลง settings.txt
+fn save_settings(ms: f32, mv: f32, js: f32, dl: f32, gx: bool, gy: bool, gls: f32, dz: f32) {
+    let txt = format!(
+        "mouse_sens {:.3}\nmove_speed {:.1}\njump_speed {:.1}\nday_length {:.0}\ngpad_inv_x {}\ngpad_inv_y {}\ngpad_look_speed {:.2}\ngpad_deadzone {:.2}\n",
+        ms, mv, js, dl, gx as u8, gy as u8, gls, dz
+    );
+    let _ = std::fs::write(SETTINGS_FILE, txt);
+}
+
 impl Block {
     fn color(&self) -> Color {
         match self {
@@ -101,7 +110,6 @@ struct Apple {
 
 const REACH: f32 = 8.0;
 const GRAVITY: f32 = 22.0;
-const GAMEPAD_LOOK_SPEED: f32 = 3.0; // ความเร็วหมุนมองด้วยจอยขวา (rad/s)
 const SAVE_FILE: &str = "world_v4.txt";
 const SETTINGS_FILE: &str = "settings.txt";
 const WORLD_SIZE: i32 = 32;
@@ -508,8 +516,12 @@ async fn main() {
     let mut day_length: f32 = 90.0;
     let mut gpad_inv_x: bool = false;
     let mut gpad_inv_y: bool = false;
+    let mut gpad_look_speed: f32 = 3.0;
+    let mut gpad_deadzone: f32 = 0.15;
     let mut settings_open = false;
     let mut settings_sel: usize = 0;
+    let mut gpad_menu_open = false;
+    let mut gpad_menu_sel: usize = 0;
     if let Ok(txt) = std::fs::read_to_string(SETTINGS_FILE) {
         for line in txt.lines() {
             let mut it = line.split_whitespace();
@@ -522,6 +534,8 @@ async fn main() {
                 "day_length" => if let Ok(v) = val.parse::<f32>() { day_length = v.clamp(30.0, 300.0) },
                 "gpad_inv_x" => gpad_inv_x = val == "1",
                 "gpad_inv_y" => gpad_inv_y = val == "1",
+                "gpad_look_speed" => if let Ok(v) = val.parse::<f32>() { gpad_look_speed = v.clamp(0.5, 8.0) },
+                "gpad_deadzone" => if let Ok(v) = val.parse::<f32>() { gpad_deadzone = v.clamp(0.05, 0.40) },
                 _ => {}
             }
         }
@@ -626,11 +640,11 @@ async fn main() {
                 let ly = pad.value(Axis::LeftStickY);
                 let rx = pad.value(Axis::RightStickX);
                 let ry = pad.value(Axis::RightStickY);
-                const DZ: f32 = 0.15; // dead zone กันจอยดริฟต์
+                let dz = gpad_deadzone; // dead zone กันจอยดริฟต์
                 let sx = if gpad_inv_x { -1.0 } else { 1.0 };
                 let sy = if gpad_inv_y { -1.0 } else { 1.0 };
-                if lx.abs() > DZ || ly.abs() > DZ { gp_move = vec2(lx * sx, ly * sy); }
-                if rx.abs() > DZ || ry.abs() > DZ { gp_look = vec2(rx * sx, ry * sy); }
+                if lx.abs() > dz || ly.abs() > dz { gp_move = vec2(lx * sx, ly * sy); }
+                if rx.abs() > dz || ry.abs() > dz { gp_look = vec2(rx * sx, ry * sy); }
                 gp_jump |= pad.is_pressed(Button::South);
                 gp_break |= pad.is_pressed(Button::West);
                 gp_place |= pad.is_pressed(Button::East);
@@ -674,16 +688,26 @@ async fn main() {
         if is_key_pressed(KeyCode::F2) || is_key_pressed(KeyCode::O) || gp_settings {
             settings_open = !settings_open;
             if settings_open {
+                gpad_menu_open = false;
+                mouse_grabbed = false;
+                set_cursor_grab(false);
+            }
+        }
+        // --- เมนูตั้งค่าเกมแพด (G) ---
+        if is_key_pressed(KeyCode::G) {
+            gpad_menu_open = !gpad_menu_open;
+            if gpad_menu_open {
+                settings_open = false;
                 mouse_grabbed = false;
                 set_cursor_grab(false);
             }
         }
         if settings_open {
             if is_key_pressed(KeyCode::Up) {
-                settings_sel = (settings_sel + 5) % 6;
+                settings_sel = (settings_sel + 3) % 4;
             }
             if is_key_pressed(KeyCode::Down) {
-                settings_sel = (settings_sel + 1) % 6;
+                settings_sel = (settings_sel + 1) % 4;
             }
             let dir = if is_key_pressed(KeyCode::Left) {
                 -1.0
@@ -697,26 +721,44 @@ async fn main() {
                     0 => mouse_sens = (mouse_sens + dir * 0.005).clamp(0.005, 0.10),
                     1 => move_speed = (move_speed + dir * 0.5).clamp(3.0, 12.0),
                     2 => jump_speed = (jump_speed + dir * 0.5).clamp(5.0, 12.0),
-                    3 => day_length = (day_length + dir * 15.0).clamp(30.0, 300.0),
-                    4 => gpad_inv_x = dir > 0.0,
-                    _ => gpad_inv_y = dir > 0.0,
+                    _ => day_length = (day_length + dir * 15.0).clamp(30.0, 300.0),
                 }
-                let txt = format!(
-                    "mouse_sens {:.3}\nmove_speed {:.1}\njump_speed {:.1}\nday_length {:.0}\ngpad_inv_x {}\ngpad_inv_y {}\n",
-                    mouse_sens, move_speed, jump_speed, day_length,
-                    gpad_inv_x as u8, gpad_inv_y as u8
-                );
-                let _ = std::fs::write(SETTINGS_FILE, txt);
+                save_settings(mouse_sens, move_speed, jump_speed, day_length, gpad_inv_x, gpad_inv_y, gpad_look_speed, gpad_deadzone);
+            }
+        }
+        // --- เมนูตั้งค่าเกมแพด (G) ---
+        if gpad_menu_open {
+            if is_key_pressed(KeyCode::Up) {
+                gpad_menu_sel = (gpad_menu_sel + 3) % 4;
+            }
+            if is_key_pressed(KeyCode::Down) {
+                gpad_menu_sel = (gpad_menu_sel + 1) % 4;
+            }
+            let dir = if is_key_pressed(KeyCode::Left) {
+                -1.0
+            } else if is_key_pressed(KeyCode::Right) {
+                1.0
+            } else {
+                0.0
+            };
+            if dir != 0.0 {
+                match gpad_menu_sel {
+                    0 => gpad_look_speed = (gpad_look_speed + dir * 0.5).clamp(0.5, 8.0),
+                    1 => gpad_inv_x = dir > 0.0,
+                    2 => gpad_inv_y = dir > 0.0,
+                    _ => gpad_deadzone = (gpad_deadzone + dir * 0.05).clamp(0.05, 0.40),
+                }
+                save_settings(mouse_sens, move_speed, jump_speed, day_length, gpad_inv_x, gpad_inv_y, gpad_look_speed, gpad_deadzone);
             }
         }
 
         // --- มองรอบด้วยเมาส์ (เฉพาะตอนเล่นเอง) ---
-        if mouse_grabbed && !autoplay && !settings_open {
+        if mouse_grabbed && !autoplay && !settings_open && !gpad_menu_open {
             let mouse_delta = mouse_delta_position();
             yaw -= mouse_delta.x * mouse_sens;
             pitch = (pitch - mouse_delta.y * mouse_sens).clamp(-1.5, 1.5);
-            yaw -= gp_look.x * GAMEPAD_LOOK_SPEED * dt;
-            pitch = (pitch - gp_look.y * GAMEPAD_LOOK_SPEED * dt).clamp(-1.5, 1.5);
+            yaw -= gp_look.x * gpad_look_speed * dt;
+            pitch = (pitch - gp_look.y * gpad_look_speed * dt).clamp(-1.5, 1.5);
         }
 
         // --- โหมดเล่นอัตโนมัติ: AI เดินหาแอปเปิ้ล + สู้หมาป่า ---
@@ -847,7 +889,7 @@ async fn main() {
         let mut horiz = Vec3::ZERO;
         if autoplay {
             horiz = auto_dir * move_speed;
-        } else if !settings_open {
+        } else if !settings_open && !gpad_menu_open {
             if is_key_down(KeyCode::W) { horiz += forward; }
             if is_key_down(KeyCode::S) { horiz -= forward; }
             if is_key_down(KeyCode::D) { horiz += right; }
@@ -873,7 +915,7 @@ async fn main() {
 
         vel.y -= GRAVITY * dt;
         vel.y = vel.y.max(-30.0);
-        if grounded && ((!settings_open && (is_key_pressed(KeyCode::Space) || gp_jump)) || (autoplay && stuck_timer > 0.4)) {
+        if grounded && ((!settings_open && !gpad_menu_open && (is_key_pressed(KeyCode::Space) || gp_jump)) || (autoplay && stuck_timer > 0.4)) {
             vel.y = jump_speed;
             grounded = false;
             stuck_timer = 0.0;
@@ -925,6 +967,8 @@ async fn main() {
         if is_key_pressed(KeyCode::Escape) {
             if settings_open {
                 settings_open = false;
+            } else if gpad_menu_open {
+                gpad_menu_open = false;
             } else {
                 mouse_grabbed = !mouse_grabbed;
                 set_cursor_grab(mouse_grabbed);
@@ -1401,7 +1445,7 @@ async fn main() {
             draw_text("You defeated the Big Boss!", screen_width() / 2.0 - 240.0, 230.0, 36.0, WHITE);
             draw_text("Press Enter to play again", screen_width() / 2.0 - 200.0, 300.0, 30.0, YELLOW);
         }
-        if !mouse_grabbed && !settings_open {
+        if !mouse_grabbed && !settings_open && !gpad_menu_open {
             draw_text("Mouse released - click the window to grab again", 20.0, 140.0, 20.0, YELLOW);
         }
         if settings_open {
@@ -1410,7 +1454,7 @@ async fn main() {
             let cx = sw / 2.0;
             let cy = sh / 2.0;
             let w = 540.0;
-            let h = 430.0;
+            let h = 340.0;
             let x0 = cx - w / 2.0;
             let y0 = cy - h / 2.0;
             draw_rectangle(x0, y0, w, h, Color::from_rgba(18, 22, 30, 225));
@@ -1421,8 +1465,6 @@ async fn main() {
                 format!("Move Speed: {:.1}", move_speed),
                 format!("Jump Power: {:.1}", jump_speed),
                 format!("Day Length: {:.0} sec", day_length),
-                format!("GPad Invert X: {}", if gpad_inv_x { "ON" } else { "OFF" }),
-                format!("GPad Invert Y: {}", if gpad_inv_y { "ON" } else { "OFF" }),
             ];
             for (i, r) in rows.iter().enumerate() {
                 let y = y0 + 108.0 + i as f32 * 46.0;
@@ -1432,6 +1474,33 @@ async fn main() {
                 draw_text(r, x0 + 32.0, y, 26.0, if i == settings_sel { YELLOW } else { WHITE });
             }
             draw_text("Up/Down = select    Left/Right = adjust", cx - 205.0, y0 + h - 28.0, 20.0, Color::from_rgba(255, 255, 255, 190));
+        }
+        if gpad_menu_open {
+            let sw = screen_width();
+            let sh = screen_height();
+            let cx = sw / 2.0;
+            let cy = sh / 2.0;
+            let w = 560.0;
+            let h = 340.0;
+            let x0 = cx - w / 2.0;
+            let y0 = cy - h / 2.0;
+            draw_rectangle(x0, y0, w, h, Color::from_rgba(18, 22, 30, 225));
+            draw_rectangle_lines(x0, y0, w, h, 2.0, GOLD);
+            draw_text("GAMEPAD SETTINGS (G = close)", cx - 215.0, y0 + 46.0, 32.0, GOLD);
+            let rows = [
+                format!("Look Speed: {:.1}", gpad_look_speed),
+                format!("Invert X: {}", if gpad_inv_x { "ON" } else { "OFF" }),
+                format!("Invert Y: {}", if gpad_inv_y { "ON" } else { "OFF" }),
+                format!("Deadzone: {:.2}", gpad_deadzone),
+            ];
+            for (i, r) in rows.iter().enumerate() {
+                let y = y0 + 108.0 + i as f32 * 46.0;
+                if i == gpad_menu_sel {
+                    draw_rectangle(x0 + 16.0, y - 14.0, w - 32.0, 38.0, Color::from_rgba(255, 255, 255, 26));
+                }
+                draw_text(r, x0 + 32.0, y, 26.0, if i == gpad_menu_sel { YELLOW } else { WHITE });
+            }
+            draw_text("Up/Down = select    Left/Right = change", cx - 215.0, y0 + h - 28.0, 20.0, Color::from_rgba(255, 255, 255, 190));
         }
 
         // Hotbar (เลือกบล็อก 1-8 สไตล์ Roblox)
