@@ -1,10 +1,9 @@
-// ep42: TCP relay server — accepts many clients and relays each line to all.
-use std::io::{BufRead, BufReader, Write};
+// ep43: server relays typed (bincode) messages instead of raw lines.
+use miniroblox_server::{recv_msg, send_msg};
 use std::net::{TcpListener, TcpStream};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-// Shared list of all connected clients (thread-safe).
 type Clients = Arc<Mutex<Vec<TcpStream>>>;
 
 fn main() {
@@ -14,28 +13,26 @@ fn main() {
     let clients: Clients = Arc::new(Mutex::new(Vec::new()));
 
     for incoming in listener.incoming() {
-        match incoming {
-            Ok(stream) => {
-                let clients = Arc::clone(&clients);
-                clients.lock().unwrap().push(stream.try_clone().unwrap());
-                thread::spawn(move || handle(stream, clients));
-            }
-            Err(e) => eprintln!("accept failed: {}", e),
-        }
+        let stream = match incoming {
+            Ok(s) => s,
+            Err(e) => { eprintln!("accept failed: {}", e); continue; }
+        };
+        let clients = Arc::clone(&clients);
+        clients.lock().unwrap().push(stream.try_clone().unwrap());
+        thread::spawn(move || handle(stream, clients));
     }
 }
 
-// Read lines from one client and broadcast them to everyone.
-fn handle(stream: TcpStream, clients: Clients) {
-    let reader = BufReader::new(stream.try_clone().unwrap());
-    for line in reader.lines() {
-        let msg = match line {
+fn handle(mut stream: TcpStream, clients: Clients) {
+    loop {
+        let msg = match recv_msg(&mut stream) {
             Ok(m) => m,
             Err(_) => break,
         };
+        println!("got: {:?}", msg);
         let mut guard = clients.lock().unwrap();
-        for client in guard.iter_mut() {
-            let _ = writeln!(client, "{}", msg);
+        for c in guard.iter_mut() {
+            let _ = send_msg(c, &msg);
         }
     }
 }
