@@ -83,13 +83,9 @@ struct Apple {
 }
 
 const REACH: f32 = 8.0;
-const SPEED: f32 = 6.0;
 const GRAVITY: f32 = 22.0;
-const JUMP_SPEED: f32 = 8.0;
-const MOUSE_SENS: f32 = 0.02; // ความเร็วหมุนมองด้วยเมาส์ (rad/pixel) — เพิ่มให้หมุนคล่องขึ้น
 const SAVE_FILE: &str = "world_v4.txt";
-// ความยาว 1 รอบกลางวัน+กลางคืน (วินาที)
-const DAY_LENGTH: f32 = 90.0;
+const SETTINGS_FILE: &str = "settings.txt";
 const WORLD_SIZE: i32 = 32;
 
 // เมล็ดภูมิประเทศ (เปลี่ยน seed -> เปลี่ยนรูปแผนที่)
@@ -487,6 +483,28 @@ async fn main() {
     let mut pitch: f32 = -25.0_f32.to_radians();
     let mut selected = Block::Stone;
 
+    // --- การตั้งค่า (ปรับได้ในเกม เมนู F2 + เซฟ settings.txt) ---
+    let mut mouse_sens: f32 = 0.02;
+    let mut move_speed: f32 = 6.0;
+    let mut jump_speed: f32 = 8.0;
+    let mut day_length: f32 = 90.0;
+    let mut settings_open = false;
+    let mut settings_sel: usize = 0;
+    if let Ok(txt) = std::fs::read_to_string(SETTINGS_FILE) {
+        for line in txt.lines() {
+            let mut it = line.split_whitespace();
+            let key = it.next().unwrap_or("");
+            let val = it.next().and_then(|v| v.parse::<f32>().ok());
+            match (key, val) {
+                ("mouse_sens", Some(v)) => mouse_sens = v.clamp(0.005, 0.10),
+                ("move_speed", Some(v)) => move_speed = v.clamp(3.0, 12.0),
+                ("jump_speed", Some(v)) => jump_speed = v.clamp(5.0, 12.0),
+                ("day_length", Some(v)) => day_length = v.clamp(30.0, 300.0),
+                _ => {}
+            }
+        }
+    }
+
     // --- สถานะ survival ---
     let mut time_of_day: f32 = 0.0; // เริ่มตอนเที่ยง (กลางวัน มีเวลาเก็บแอปเปิ้ลก่อนมืด)
     let mut hp: f32 = 100.0;
@@ -560,7 +578,7 @@ async fn main() {
         let dt = get_frame_time();
 
         // --- วงจรกลางวัน/กลางคืน ---
-        time_of_day = (time_of_day + dt / DAY_LENGTH) % 1.0;
+        time_of_day = (time_of_day + dt / day_length) % 1.0;
         let day_factor = (time_of_day * std::f32::consts::TAU).cos(); // 1=เที่ยง, -1=เที่ยงคืน
         let nightness = if practice { 0.0 } else { (-day_factor).clamp(0.0, 1.0) }; // 0=กลางวัน, 1=กลางคืน
         let is_night = if practice { false } else { day_factor < -0.2 };
@@ -594,11 +612,48 @@ async fn main() {
             }
         }
 
+        // --- เมนูตั้งค่า (F2) ---
+        if is_key_pressed(KeyCode::F2) {
+            settings_open = !settings_open;
+            if settings_open {
+                mouse_grabbed = false;
+                set_cursor_grab(false);
+            }
+        }
+        if settings_open {
+            if is_key_pressed(KeyCode::Up) {
+                settings_sel = (settings_sel + 3) % 4;
+            }
+            if is_key_pressed(KeyCode::Down) {
+                settings_sel = (settings_sel + 1) % 4;
+            }
+            let dir = if is_key_pressed(KeyCode::Left) {
+                -1.0
+            } else if is_key_pressed(KeyCode::Right) {
+                1.0
+            } else {
+                0.0
+            };
+            if dir != 0.0 {
+                match settings_sel {
+                    0 => mouse_sens = (mouse_sens + dir * 0.005).clamp(0.005, 0.10),
+                    1 => move_speed = (move_speed + dir * 0.5).clamp(3.0, 12.0),
+                    2 => jump_speed = (jump_speed + dir * 0.5).clamp(5.0, 12.0),
+                    _ => day_length = (day_length + dir * 15.0).clamp(30.0, 300.0),
+                }
+                let txt = format!(
+                    "mouse_sens {:.3}\nmove_speed {:.1}\njump_speed {:.1}\nday_length {:.0}\n",
+                    mouse_sens, move_speed, jump_speed, day_length
+                );
+                let _ = std::fs::write(SETTINGS_FILE, txt);
+            }
+        }
+
         // --- มองรอบด้วยเมาส์ (เฉพาะตอนเล่นเอง) ---
-        if mouse_grabbed && !autoplay {
+        if mouse_grabbed && !autoplay && !settings_open {
             let mouse_delta = mouse_delta_position();
-            yaw -= mouse_delta.x * MOUSE_SENS;
-            pitch = (pitch - mouse_delta.y * MOUSE_SENS).clamp(-1.5, 1.5);
+            yaw -= mouse_delta.x * mouse_sens;
+            pitch = (pitch - mouse_delta.y * mouse_sens).clamp(-1.5, 1.5);
         }
 
         // --- โหมดเล่นอัตโนมัติ: AI เดินหาแอปเปิ้ล + สู้หมาป่า ---
@@ -728,14 +783,14 @@ async fn main() {
         // --- เดิน ---
         let mut horiz = Vec3::ZERO;
         if autoplay {
-            horiz = auto_dir * SPEED;
-        } else {
+            horiz = auto_dir * move_speed;
+        } else if !settings_open {
             if is_key_down(KeyCode::W) { horiz += forward; }
             if is_key_down(KeyCode::S) { horiz -= forward; }
             if is_key_down(KeyCode::D) { horiz += right; }
             if is_key_down(KeyCode::A) { horiz -= right; }
             if horiz != Vec3::ZERO {
-                horiz = horiz.normalize() * SPEED;
+                horiz = horiz.normalize() * move_speed;
             }
         }
         vel.x = horiz.x;
@@ -752,8 +807,8 @@ async fn main() {
 
         vel.y -= GRAVITY * dt;
         vel.y = vel.y.max(-30.0);
-        if grounded && (is_key_pressed(KeyCode::Space) || (autoplay && stuck_timer > 0.4)) {
-            vel.y = JUMP_SPEED;
+        if grounded && ((!settings_open && is_key_pressed(KeyCode::Space)) || (autoplay && stuck_timer > 0.4)) {
+            vel.y = jump_speed;
             grounded = false;
             stuck_timer = 0.0;
         }
@@ -800,8 +855,12 @@ async fn main() {
             third_person = !third_person;
         }
         if is_key_pressed(KeyCode::Escape) {
-            mouse_grabbed = !mouse_grabbed;
-            set_cursor_grab(mouse_grabbed);
+            if settings_open {
+                settings_open = false;
+            } else {
+                mouse_grabbed = !mouse_grabbed;
+                set_cursor_grab(mouse_grabbed);
+            }
         }
         // เริ่มเกมใหม่ (กด Enter หลังชนะ) -> สุ่มแผนที่ใหม่
         if game_won && is_key_pressed(KeyCode::Enter) {
@@ -1274,8 +1333,35 @@ async fn main() {
             draw_text("You defeated the Big Boss!", screen_width() / 2.0 - 240.0, 230.0, 36.0, WHITE);
             draw_text("Press Enter to play again", screen_width() / 2.0 - 200.0, 300.0, 30.0, YELLOW);
         }
-        if !mouse_grabbed {
+        if !mouse_grabbed && !settings_open {
             draw_text("Mouse released - click the window to grab again", 20.0, 140.0, 20.0, YELLOW);
+        }
+        if settings_open {
+            let sw = screen_width();
+            let sh = screen_height();
+            let cx = sw / 2.0;
+            let cy = sh / 2.0;
+            let w = 540.0;
+            let h = 340.0;
+            let x0 = cx - w / 2.0;
+            let y0 = cy - h / 2.0;
+            draw_rectangle(x0, y0, w, h, Color::from_rgba(18, 22, 30, 225));
+            draw_rectangle_lines(x0, y0, w, h, 2.0, GOLD);
+            draw_text("SETTINGS (F2 = close)", cx - 170.0, y0 + 46.0, 32.0, GOLD);
+            let rows = [
+                format!("Mouse Sensitivity: {:.3}", mouse_sens),
+                format!("Move Speed: {:.1}", move_speed),
+                format!("Jump Power: {:.1}", jump_speed),
+                format!("Day Length: {:.0} sec", day_length),
+            ];
+            for (i, r) in rows.iter().enumerate() {
+                let y = y0 + 108.0 + i as f32 * 46.0;
+                if i == settings_sel {
+                    draw_rectangle(x0 + 16.0, y - 14.0, w - 32.0, 38.0, Color::from_rgba(255, 255, 255, 26));
+                }
+                draw_text(r, x0 + 32.0, y, 26.0, if i == settings_sel { YELLOW } else { WHITE });
+            }
+            draw_text("Up/Down = select    Left/Right = adjust", cx - 205.0, y0 + h - 28.0, 20.0, Color::from_rgba(255, 255, 255, 190));
         }
 
         // Hotbar (เลือกบล็อก 1-8 สไตล์ Roblox)
