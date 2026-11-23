@@ -5,11 +5,21 @@ use std::net::TcpStream;
 
 pub mod db;
 
+// One block in the world.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Block {
+    pub x: i32,
+    pub y: i32,
+    pub z: i32,
+    pub block: u8,
+}
+
 // Messages exchanged between client and server.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Message {
     Join { name: String },
     Move { x: f32, y: f32, z: f32 },
+    World { blocks: Vec<Block> },
 }
 
 // Send one message: [4-byte length][bincode bytes].

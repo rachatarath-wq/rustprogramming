@@ -1,4 +1,5 @@
 // SQLite persistence: players + world blocks survive a server restart.
+use crate::Block;
 use rusqlite::{params, Connection};
 
 // Open (or create) world.db and ensure tables exist.
@@ -43,4 +44,30 @@ pub fn list_players(conn: &Connection) -> Vec<(String, f32, f32, f32)> {
         .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))
         .unwrap();
     rows.filter_map(|r| r.ok()).collect()
+}
+
+// Load the whole world (all blocks) into memory.
+pub fn load_blocks(conn: &Connection) -> Vec<Block> {
+    let mut stmt = conn.prepare("SELECT x, y, z, block FROM blocks").unwrap();
+    let rows = stmt
+        .query_map([], |r| {
+            Ok(Block {
+                x: r.get(0)?,
+                y: r.get(1)?,
+                z: r.get(2)?,
+                block: r.get(3)?,
+            })
+        })
+        .unwrap();
+    rows.filter_map(|r| r.ok()).collect()
+}
+
+// Save one block (upsert on x,y,z).
+pub fn save_block(conn: &Connection, b: &Block) {
+    conn.execute(
+        "INSERT INTO blocks (x, y, z, block) VALUES (?1, ?2, ?3, ?4)
+         ON CONFLICT(x, y, z) DO UPDATE SET block=?4",
+        params![b.x, b.y, b.z, b.block],
+    )
+    .expect("save block failed");
 }
