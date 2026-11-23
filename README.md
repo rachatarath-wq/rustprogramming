@@ -79,3 +79,11 @@ LIBGL_ALWAYS_SOFTWARE=1 ./miniroblox
 วิธีแก้ถาวร (เลือกอย่างใดอย่างหนึ่ง):
 - เล่น/ทดสอบบนเครื่องที่มีการ์ดจอใหม่กว่า (รองรับ OpenGL 3.3 ขึ้นไป) — แนะนำสำหรับการเล่นจริง
 - ลบ driver nvidia-340 แล้วใช้ driver โอเพนซอร์ส `nouveau` แทน (เสถียรกว่าบน kernel ใหม่ แต่ GPU เก่าขนาดนี้ก็ยังช้าอยู่ดี)
+
+### 8. Google login ไม่เข้า (ขึ้น "login failed" / server log "token exchange failed")
+สาเหตุ: authorization code ที่ Google ส่งกลับมาใน URL ถูก URL-encode — ตัวอักษรพิเศษอย่างเครื่องหมาย `/` กลายเป็น `%2F` ถ้าโค้ดอ่านค่า `code` จาก query string ไปใช้ตรง ๆ โดยไม่ percent-decode ค่าจะเพี้ยน แล้ว Google ปัดทิ้ง (ตอบ 400 invalid_grant)
+วิธีแก้: เรียก percent_decode ก่อนส่ง code ไปแลก token (ดูฟังก์ชันใน `miniroblox/src/net.rs` สำหรับเกม และ `miniroblox-server/src/web.rs` สำหรับเว็บแอดมิน)
+วิธี debug ให้เจอเร็ว:
+- log ค่า code ที่ได้ (ความยาว + ตัวอักษรแรก) — ถ้าเห็น `%2F` แปลว่ายัง encode อยู่
+- log สถานะ token exchange — `200` = ผ่าน, `400` = code ยังผิด
+- บั๊กนี้จุดเดียวแต่เจอได้ทั้งในตัวเกมและเว็บแอดมิน เพราะทั้งคู่ต่างอ่าน code จาก URL เหมือนกัน
