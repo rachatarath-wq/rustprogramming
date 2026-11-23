@@ -27,7 +27,7 @@ pub enum Message {
     Coins { coins: i64 },
     Buy { name: String, item: String },
     Bought { item: String, coins: i64 },
-    Spawn { x: f32, z: f32 },
+    Spawn { x: f32, z: f32, owner: bool },
 }
 
 // Send one message: [4-byte length][bincode bytes].

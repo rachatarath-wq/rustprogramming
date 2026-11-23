@@ -26,7 +26,7 @@ pub enum Message {
     Coins { coins: i64 },
     Buy { name: String, item: String },
     Bought { item: String, coins: i64 },
-    Spawn { x: f32, z: f32 },
+    Spawn { x: f32, z: f32, owner: bool },
 }
 
 pub fn send_msg(stream: &mut TcpStream, msg: &Message) -> std::io::Result<()> {
@@ -48,7 +48,7 @@ pub fn recv_msg(stream: &mut TcpStream) -> std::io::Result<Message> {
 
 // ตรวจก่อนว่ามีเซิร์ฟเวอร์ไหม (กันเด้งเบราว์เซอร์ตอนเล่นเดี่ยว)
 // แล้วทำ Google OAuth login และรับโลกกลับมา
-pub fn connect_with_google_login(addr: &str) -> Option<(TcpStream, Vec<Block>, f32, f32)> {
+pub fn connect_with_google_login(addr: &str) -> Option<(TcpStream, Vec<Block>, f32, f32, bool)> {
     let _probe =
         TcpStream::connect_timeout(&addr.parse().ok()?, Duration::from_millis(800)).ok()?;
     // DEV=1: ข้าม Google (ใช้ "dev:player") สำหรับทดสอบเร็ว ๆ
@@ -60,7 +60,7 @@ pub fn connect_with_google_login(addr: &str) -> Option<(TcpStream, Vec<Block>, f
     connect_and_login(addr, &code)
 }
 
-fn connect_and_login(addr: &str, code: &str) -> Option<(TcpStream, Vec<Block>, f32, f32)> {
+fn connect_and_login(addr: &str, code: &str) -> Option<(TcpStream, Vec<Block>, f32, f32, bool)> {
     let mut stream =
         TcpStream::connect_timeout(&addr.parse().ok()?, Duration::from_secs(2)).ok()?;
     // เซิร์ฟเวอร์ต้องแลก code เป็น token (เรียก Google 2 รอบ) — ให้เวลามากหน่อย
@@ -70,12 +70,12 @@ fn connect_and_login(addr: &str, code: &str) -> Option<(TcpStream, Vec<Block>, f
         Message::World { blocks } => blocks,
         _ => return None,
     };
-    let (sx, sz) = match recv_msg(&mut stream).ok()? {
-        Message::Spawn { x, z } => (x, z),
+    let (sx, sz, owner) = match recv_msg(&mut stream).ok()? {
+        Message::Spawn { x, z, owner } => (x, z, owner),
         _ => return None,
     };
     stream.set_read_timeout(None).ok();
-    Some((stream, blocks, sx, sz))
+    Some((stream, blocks, sx, sz, owner))
 }
 
 // เปิดเบราว์เซอร์ให้ผู้ใช้ล็อกอิน Google แล้วรอ redirect กลับมา -> ได้ code

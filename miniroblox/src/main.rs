@@ -551,13 +551,15 @@ async fn main() {
     let coins_shared: Arc<Mutex<i64>> = Arc::new(Mutex::new(0));
     let pending_breaks: Arc<Mutex<Vec<(i32, i32, i32)>>> = Arc::new(Mutex::new(Vec::new()));
     let mut my_color: u8 = 0;
+    let mut my_owner: bool = false;
     let mut spawn_offset: (i32, i32) = (0, 0);
     let mut thai = thai_text::ThaiText::new();
     let mut chat_open = false;
     let mut chat_input = String::new();
     match net::connect_with_google_login(&server_addr) {
-        Some((stream, blocks, sx, sz)) => {
+        Some((stream, blocks, sx, sz, owner)) => {
             spawn_offset = (sx as i32, sz as i32);
+            my_owner = owner;
             for b in &blocks {
                 world.insert((b.x, b.y, b.z), block_from_u8(b.block));
             }
@@ -1545,8 +1547,12 @@ async fn main() {
         // ตัวผู้เล่น (บุคคลที่ 3)
         if third_person {
             let skin = Color::from_rgba(230, 190, 150, 255);
-            let shirt = Color::from_rgba(40, 90, 200, 255);
-            let pants = Color::from_rgba(30, 45, 90, 255);
+            let (shirt, pants) = if my_owner {
+                (GOLD, GOLD)
+            } else {
+                let c = player_color(my_color);
+                (c, c)
+            };
             let rot = |lx: f32, ly: f32, lz: f32| vec3(
                 cam_pos.x + lx * yaw.cos() + lz * yaw.sin(),
                 cam_pos.y + ly,
@@ -1564,6 +1570,11 @@ async fn main() {
             draw_cube(rot(0.33, 0.05, swing), vec3(0.15, 0.6, 0.15), None, shirt);
             draw_cube(rot(-0.15, -0.5, swing), vec3(0.2, 0.5, 0.2), None, pants);
             draw_cube(rot(0.15, -0.5, -swing), vec3(0.2, 0.5, 0.2), None, pants);
+            if my_owner {
+                // มงกุฎทอง (เห็นบนหัวตัวเองด้วย)
+                draw_cube(rot(0.0, 0.75, 0.0), vec3(0.3, 0.2, 0.3), None, GOLD);
+                draw_cube(rot(0.0, 0.9, 0.0), vec3(0.1, 0.16, 0.1), None, GOLD);
+            }
         }
 
         // นำบล็อกที่ผู้เล่นคนอื่นทุบออกจากโลก (sync จากเซิร์ฟเวอร์)

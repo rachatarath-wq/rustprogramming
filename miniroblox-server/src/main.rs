@@ -104,12 +104,13 @@ fn handle(
                 let sz = ((h >> 8) % 9) as i32 - 4;
                 let blocks = world.lock().unwrap().clone();
                 let n = blocks.len();
+                let owner = email == owner_email;
                 let _ = send_msg(&mut stream, &Message::World { blocks });
-                let _ = send_msg(&mut stream, &Message::Spawn { x: sx as f32, z: sz as f32 });
+                let _ = send_msg(&mut stream, &Message::Spawn { x: sx as f32, z: sz as f32, owner });
                 let _ = send_msg(&mut stream, &Message::Coins { coins });
                 clients.lock().unwrap().insert(email.clone(), stream.try_clone().unwrap());
                 my_name = Some(email.clone());
-                my_owner = email == owner_email;
+                my_owner = owner;
                 println!("{} logged in, sent {} blocks ({} coins, spawn {},{})", email, n, coins, sx, sz);
             }
             // Movement: overwrite the name with the verified identity (anti-spoofing)
