@@ -1551,9 +1551,9 @@ async fn main() {
         // --- HUD ---
         draw_text("WASD: walk | Space: jump | LMB: hit/break | RMB: place | E: eat | V: view | T: home | P: auto | M: train | Esc: mouse | F10: quit", 20.0, 30.0, 22.0, WHITE);
 
-        // ยอดเหรียญ (อัปเดตจากเซิร์ฟเวอร์)
+        // ยอดเหรียญ (อัปเดตจากเซิร์ฟเวอร์) — วางใต้เรดาร์มุมขวาบน ไม่ให้ทับกัน
         let coins = *coins_shared.lock().unwrap();
-        thai.draw(&format!("เหรียญ: {}", coins), screen_width() - 170.0, 30.0, 18.0, GOLD);
+        thai.draw(&format!("เหรียญ: {}", coins), screen_width() - 170.0, 130.0, 18.0, GOLD);
 
         // --- แชท (log + input) ---
         {
