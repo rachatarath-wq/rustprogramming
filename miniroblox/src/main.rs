@@ -1532,7 +1532,7 @@ async fn main() {
                 cy -= 30.0;
             }
             if chat_open {
-                thai.draw(&format!("> {}", chat_input), 20.0, screen_height() - 46.0, 18.0, YELLOW);
+                thai.draw(&format!("> {}", chat_input), 20.0, screen_height() - 24.0, 18.0, YELLOW);
             } else {
                 thai.draw("T: chat", 20.0, screen_height() - 22.0, 16.0, Color::from_rgba(200, 200, 200, 160));
             }
