@@ -44,7 +44,8 @@ impl ThaiText {
                 continue;
             }
             let gx = cx + xmin + p.x_offset as f32 * scale;
-            let gy = baseline + ymin - p.y_offset as f32 * scale;
+            // fontdue ymin is y-UP (positive above baseline) -> flip to y-down screen
+            let gy = baseline - h - ymin - p.y_offset as f32 * scale;
             draw_texture_ex(
                 &tex,
                 gx,
