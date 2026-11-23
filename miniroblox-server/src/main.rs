@@ -35,6 +35,9 @@ fn main() {
     println!("world ready: {} blocks", world.lock().unwrap().len());
 
     let clients: Clients = Arc::new(Mutex::new(HashMap::new()));
+    // อีเมลเจ้าของเซิร์ฟเวอร์ — ได้มงกุฎทอง + ตัวใหญ่กว่า (ตั้งค่า OWNER_EMAIL เพื่อเปลี่ยน)
+    let owner_email: String =
+        std::env::var("OWNER_EMAIL").unwrap_or_else(|_| "rachata.rath@gmail.com".to_string());
 
     // Admin web UI on a separate port (read-only status page).
     let admin_port: u16 = std::env::var("ADMIN_PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(8080);
@@ -56,7 +59,8 @@ fn main() {
         let clients = Arc::clone(&clients);
         let db = Arc::clone(&db);
         let world = Arc::clone(&world);
-        thread::spawn(move || handle(stream, clients, db, world));
+        let owner_email = owner_email.clone();
+        thread::spawn(move || handle(stream, clients, db, world, owner_email));
     }
 }
 
@@ -65,8 +69,10 @@ fn handle(
     clients: Clients,
     db: Arc<Mutex<rusqlite::Connection>>,
     world: World,
+    owner_email: String,
 ) {
     let mut my_name: Option<String> = None;
+    let mut my_owner = false;
     loop {
         let msg = match recv_msg(&mut stream) {
             Ok(m) => m,
@@ -89,22 +95,33 @@ fn handle(
                     db::save_player(&conn, &email, 0.0, 0.0, 0.0);
                     db::get_coins(&conn, &email)
                 };
+                // กระจายจุดเกิด — ออฟเซตจาก hash ของอีเมล ให้แต่ละคนเกิดคนละจุด
+                let mut h: u32 = 2166136261;
+                for b in email.bytes() {
+                    h = (h ^ b as u32).wrapping_mul(16777619);
+                }
+                let sx = (h % 9) as i32 - 4;
+                let sz = ((h >> 8) % 9) as i32 - 4;
                 let blocks = world.lock().unwrap().clone();
                 let n = blocks.len();
                 let _ = send_msg(&mut stream, &Message::World { blocks });
+                let _ = send_msg(&mut stream, &Message::Spawn { x: sx as f32, z: sz as f32 });
                 let _ = send_msg(&mut stream, &Message::Coins { coins });
                 clients.lock().unwrap().insert(email.clone(), stream.try_clone().unwrap());
                 my_name = Some(email.clone());
-                println!("{} logged in, sent {} blocks ({} coins)", email, n, coins);
+                my_owner = email == owner_email;
+                println!("{} logged in, sent {} blocks ({} coins, spawn {},{})", email, n, coins, sx, sz);
             }
             // Movement: overwrite the name with the verified identity (anti-spoofing)
             // then broadcast to everyone EXCEPT the sender.
-            Message::Move { name: _, x, y, z } => {
+            Message::Move { name: _, x, y, z, color, owner: _ } => {
                 let out = Message::Move {
                     name: my_name.clone().unwrap_or_default(),
                     x: *x,
                     y: *y,
                     z: *z,
+                    color: *color,
+                    owner: my_owner,
                 };
                 let mut guard = clients.lock().unwrap();
                 for (name, c) in guard.iter_mut() {
@@ -142,6 +159,29 @@ fn handle(
                 for (n, c) in guard.iter_mut() {
                     if Some(n) != Some(&name) {
                         let _ = send_msg(c, &out);
+                    }
+                }
+            }
+            // Buy an item from the shop: validate price + balance, then deduct.
+            Message::Buy { name: _, item } => {
+                let name = my_name.clone().unwrap_or_default();
+                let price = match item.as_str() {
+                    "apple" => 5,
+                    "heal" => 10,
+                    _ => 0,
+                };
+                if price > 0 {
+                    let conn = db.lock().unwrap();
+                    let coins = db::get_coins(&conn, &name);
+                    if coins >= price {
+                        let new_coins = db::add_coins(&conn, &name, -price);
+                        let _ = send_msg(
+                            &mut stream,
+                            &Message::Bought { item: item.clone(), coins: new_coins },
+                        );
+                    } else {
+                        // เหรียญไม่พอ — ส่งยอดปัจจุบันกลับไป
+                        let _ = send_msg(&mut stream, &Message::Coins { coins });
                     }
                 }
             }

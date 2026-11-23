@@ -124,7 +124,7 @@ const REACH: f32 = 8.0;
 const GRAVITY: f32 = 22.0;
 const SAVE_FILE: &str = "world_v4.txt";
 const SETTINGS_FILE: &str = "settings.txt";
-const WORLD_SIZE: i32 = 32;
+const WORLD_SIZE: i32 = 128;
 
 // เมล็ดภูมิประเทศ (เปลี่ยน seed -> เปลี่ยนรูปแผนที่)
 static TERRAIN_SEED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
@@ -258,8 +258,8 @@ fn build_world(seed: u64) -> HashMap<BlockPos, Block> {
         }
     }
 
-    // 3. ต้นไม้สุ่ม 8-12 ต้น (หลีกเลี่ยงกลาง)
-    let trees = rng.range(8, 12);
+    // 3. ต้นไม้สุ่ม (จำนวนตามขนาดโลก)
+    let trees = rng.range(WORLD_SIZE / 2, WORLD_SIZE);
     for _ in 0..trees {
         let x = rng.range(3, WORLD_SIZE - 4);
         let z = rng.range(3, WORLD_SIZE - 4);
@@ -270,8 +270,8 @@ fn build_world(seed: u64) -> HashMap<BlockPos, Block> {
         build_tree(&mut w, x, h + 1, z);
     }
 
-    // 4. บ้านสุ่ม 3 หลัง (ปรับพื้นให้เรียบก่อน)
-    for _ in 0..3 {
+    // 4. บ้านสุ่ม (จำนวนตามขนาดโลก)
+    for _ in 0..(WORLD_SIZE / 8) {
         let x = rng.range(3, WORLD_SIZE - 8);
         let z = rng.range(3, WORLD_SIZE - 8);
         if (x - cx).abs() < 7 && (z - cx).abs() < 7 {
@@ -401,6 +401,55 @@ fn player_collides(pos: Vec3, world: &HashMap<BlockPos, Block>) -> bool {
     aabb_collides(pos, vec3(0.3, 0.85, 0.3), world)
 }
 
+// ชนกับผู้เล่นคนอื่น (AABB ผู้เล่น vs ผู้เล่น)
+fn collides_player(pos: Vec3, others: &HashMap<String, (Vec3, u8, bool)>) -> bool {
+    for (opos, _, _) in others.values() {
+        if (pos.x - opos.x).abs() < 0.6
+            && (pos.y - opos.y).abs() < 1.7
+            && (pos.z - opos.z).abs() < 0.6
+        {
+            return true;
+        }
+    }
+    false
+}
+
+// สีชุดผู้เล่น 16 สี (เลือกด้วยปุ่ม C)
+fn player_color(idx: u8) -> Color {
+    match idx % 16 {
+        0 => RED,
+        1 => BLUE,
+        2 => GREEN,
+        3 => YELLOW,
+        4 => PURPLE,
+        5 => ORANGE,
+        6 => PINK,
+        7 => VIOLET,
+        8 => BROWN,
+        9 => LIME,
+        10 => MAGENTA,
+        11 => GOLD,
+        12 => SKYBLUE,
+        13 => DARKPURPLE,
+        14 => MAROON,
+        15 => DARKGREEN,
+        _ => RED,
+    }
+}
+
+// แปลงตำแหน่ง 3D เป็นพิกัดหน้าจอ (ประมาณ) สำหรับวาดชื่อผู้เล่นเหนือหัว
+fn project_label(p: Vec3, cam_pos: Vec3, forward: Vec3, right: Vec3) -> Option<(f32, f32)> {
+    let rel = p - cam_pos;
+    let d = rel.dot(forward);
+    if d < 0.5 {
+        return None; // อยู่ข้างหลังกล้อง
+    }
+    let focal = screen_height() * 1.2;
+    let sx = rel.dot(right) / d * focal;
+    let sy = rel.y / d * focal;
+    Some((screen_width() / 2.0 + sx, screen_height() / 2.0 - sy))
+}
+
 fn lerp_color(a: Color, b: Color, t: f32) -> Color {
     let t = t.clamp(0.0, 1.0);
     Color::new(
@@ -496,15 +545,19 @@ async fn main() {
     let mut net_stream: Option<std::net::TcpStream> = None;
     let mut net_move_timer: f32 = 0.0;
     // ตำแหน่งผู้เล่นคนอื่น (ชื่อ -> ตำแหน่ง) อัปเดตจากเทรดรับข้อมูล
-    let other_players: Arc<Mutex<HashMap<String, Vec3>>> = Arc::new(Mutex::new(HashMap::new()));
+    let other_players: Arc<Mutex<HashMap<String, (Vec3, u8, bool)>>> =
+        Arc::new(Mutex::new(HashMap::new()));
     let chat_log: Arc<Mutex<Vec<(String, String)>>> = Arc::new(Mutex::new(Vec::new()));
     let coins_shared: Arc<Mutex<i64>> = Arc::new(Mutex::new(0));
     let pending_breaks: Arc<Mutex<Vec<(i32, i32, i32)>>> = Arc::new(Mutex::new(Vec::new()));
+    let mut my_color: u8 = 0;
+    let mut spawn_offset: (i32, i32) = (0, 0);
     let mut thai = thai_text::ThaiText::new();
     let mut chat_open = false;
     let mut chat_input = String::new();
     match net::connect_with_google_login(&server_addr) {
-        Some((stream, blocks)) => {
+        Some((stream, blocks, sx, sz)) => {
+            spawn_offset = (sx as i32, sz as i32);
             for b in &blocks {
                 world.insert((b.x, b.y, b.z), block_from_u8(b.block));
             }
@@ -516,8 +569,11 @@ async fn main() {
                 let pending_breaks = Arc::clone(&pending_breaks);
                 std::thread::spawn(move || loop {
                     match net::recv_msg(&mut recv) {
-                        Ok(net::Message::Move { name, x, y, z }) => {
-                            other_players.lock().unwrap().insert(name, vec3(x, y, z));
+                        Ok(net::Message::Move { name, x, y, z, color, owner }) => {
+                            other_players
+                                .lock()
+                                .unwrap()
+                                .insert(name, (vec3(x, y, z), color, owner));
                         }
                         Ok(net::Message::Chat { name, text }) => {
                             let mut log = chat_log.lock().unwrap();
@@ -563,10 +619,14 @@ async fn main() {
     draw_loading(0.92, "Rendering first frame...");
     next_frame().await;
 
-    // จุดเกิด (กลางแผนที่ บนที่ราบสูง)
+    // จุดเกิด (กระจายบนที่ราบสูง — ออฟเซตจากเซิร์ฟเวอร์)
     let cx = WORLD_SIZE / 2;
     let mut plaza_h = plaza_height();
-    let mut spawn_pos = vec3(cx as f32 + 0.5, plaza_h as f32 + 2.0, cx as f32 + 0.5);
+    let mut spawn_pos = vec3(
+        cx as f32 + spawn_offset.0 as f32 + 0.5,
+        plaza_h as f32 + 2.0,
+        cx as f32 + spawn_offset.1 as f32 + 0.5,
+    );
 
     // --- ผู้เล่น ---
     let mut cam_pos = spawn_pos;
@@ -690,7 +750,12 @@ async fn main() {
             if net_move_timer <= 0.0 {
                 net_move_timer = 0.5;
                 let _ = net::send_msg(stream, &net::Message::Move {
-                    name: String::new(), x: cam_pos.x, y: cam_pos.y, z: cam_pos.z,
+                    name: String::new(),
+                    x: cam_pos.x,
+                    y: cam_pos.y,
+                    z: cam_pos.z,
+                    color: my_color,
+                    owner: false,
                 });
             }
         }
@@ -1051,25 +1116,34 @@ async fn main() {
             stuck_timer = 0.0;
         }
 
-        let nx = cam_pos.x + vel.x * dt;
-        if !player_collides(vec3(nx, cam_pos.y, cam_pos.z), &world) {
-            cam_pos.x = nx;
-        } else {
-            vel.x = 0.0;
-        }
-        let ny = cam_pos.y + vel.y * dt;
-        if !player_collides(vec3(cam_pos.x, ny, cam_pos.z), &world) {
-            cam_pos.y = ny;
-            grounded = false;
-        } else {
-            if vel.y < 0.0 { grounded = true; }
-            vel.y = 0.0;
-        }
-        let nz = cam_pos.z + vel.z * dt;
-        if !player_collides(vec3(cam_pos.x, cam_pos.y, nz), &world) {
-            cam_pos.z = nz;
-        } else {
-            vel.z = 0.0;
+        {
+            let others = other_players.lock().unwrap();
+            let nx = cam_pos.x + vel.x * dt;
+            if !player_collides(vec3(nx, cam_pos.y, cam_pos.z), &world)
+                && !collides_player(vec3(nx, cam_pos.y, cam_pos.z), &others)
+            {
+                cam_pos.x = nx;
+            } else {
+                vel.x = 0.0;
+            }
+            let ny = cam_pos.y + vel.y * dt;
+            if !player_collides(vec3(cam_pos.x, ny, cam_pos.z), &world)
+                && !collides_player(vec3(cam_pos.x, ny, cam_pos.z), &others)
+            {
+                cam_pos.y = ny;
+                grounded = false;
+            } else {
+                if vel.y < 0.0 { grounded = true; }
+                vel.y = 0.0;
+            }
+            let nz = cam_pos.z + vel.z * dt;
+            if !player_collides(vec3(cam_pos.x, cam_pos.y, nz), &world)
+                && !collides_player(vec3(cam_pos.x, cam_pos.y, nz), &others)
+            {
+                cam_pos.z = nz;
+            } else {
+                vel.z = 0.0;
+            }
         }
 
         // --- ปุ่มต่าง ๆ ---
@@ -1081,6 +1155,7 @@ async fn main() {
         if is_key_pressed(KeyCode::Key6) { selected = Block::Glass; }
         if is_key_pressed(KeyCode::Key7) { selected = Block::Brick; }
         if is_key_pressed(KeyCode::Key8) { selected = Block::Snow; }
+        if is_key_pressed(KeyCode::C) && !settings_open && !gpad_menu_open { my_color = (my_color + 1) % 16; }
         if gp_sel_next { selected = block_next(selected); }
         if gp_sel_prev { selected = block_prev(selected); }
         if is_key_pressed(KeyCode::R) {
@@ -1389,11 +1464,21 @@ async fn main() {
         for w in &wolves {
             draw_cube(vec3(w.pos.x, 0.03, w.pos.z), vec3(0.8, 0.03, 0.8), None, shadow);
         }
-        // ผู้เล่นคนอื่น (จากเซิร์ฟเวอร์) — ลำตัวสีน้ำเงิน + หัว
-        for (_name, pos) in other_players.lock().unwrap().iter() {
+        // ผู้เล่นคนอื่น (จากเซิร์ฟเวอร์) — สีชุดที่เลือก + มงกุฎทองถ้าเป็นเจ้าของ
+        for (_name, (pos, color_idx, owner)) in other_players.lock().unwrap().iter() {
             let body = vec3(pos.x, pos.y - 0.9, pos.z);
-            draw_cube(body, vec3(0.6, 1.8, 0.6), None, BLUE);
-            draw_cube(body + vec3(0.0, 1.2, 0.0), vec3(0.5, 0.5, 0.5), None, SKYBLUE);
+            if *owner {
+                // เจ้าของ: ตัวใหญ่ขึ้น + สีทอง + มงกุฎ
+                let s = 1.3;
+                draw_cube(body, vec3(0.6, 1.8, 0.6) * s, None, GOLD);
+                draw_cube(body + vec3(0.0, 1.35, 0.0), vec3(0.5, 0.5, 0.5) * s, None, GOLD);
+                draw_cube(body + vec3(0.0, 2.15, 0.0), vec3(0.4, 0.28, 0.4), None, GOLD);
+                draw_cube(body + vec3(0.0, 2.38, 0.0), vec3(0.14, 0.22, 0.14), None, GOLD);
+            } else {
+                let color = player_color(*color_idx);
+                draw_cube(body, vec3(0.6, 1.8, 0.6), None, color);
+                draw_cube(body + vec3(0.0, 1.2, 0.0), vec3(0.5, 0.5, 0.5), None, SKYBLUE);
+            }
         }
         // อนุภาคทุบบล็อก
         for p in &particles {
@@ -1548,8 +1633,26 @@ async fn main() {
 
         set_default_camera();
 
+        // ชื่อผู้เล่นคนอื่น (เหนือหัว) — วาดในโหมด 2D หลังตั้งกล้องแล้ว
+        {
+            let others = other_players.lock().unwrap();
+            for (name, (pos, _, owner)) in others.iter() {
+                let h = if *owner { 3.2 } else { 2.5 };
+                let label = *pos + vec3(0.0, h, 0.0);
+                if let Some((sx, sy)) = project_label(label, cam_pos, forward, right) {
+                    let color = if *owner {
+                        GOLD
+                    } else {
+                        Color::from_rgba(255, 255, 255, 210)
+                    };
+                    let dim = measure_text(name, None, 14, 1.0);
+                    draw_text(name, sx - dim.width / 2.0, sy - 7.0, 14.0, color);
+                }
+            }
+        }
+
         // --- HUD ---
-        draw_text("WASD: walk | Space: jump | LMB: hit/break | RMB: place | E: eat | V: view | T: home | P: auto | M: train | Esc: mouse | F10: quit", 20.0, 30.0, 22.0, WHITE);
+        draw_text("WASD: walk | Space: jump | LMB: hit/break | RMB: place | E: eat | V: view | T: home | P: auto | M: train | C: color | Esc: mouse | F10: quit", 20.0, 30.0, 22.0, WHITE);
 
         // ยอดเหรียญ (อัปเดตจากเซิร์ฟเวอร์) — วางใต้เรดาร์มุมขวาบน ไม่ให้ทับกัน
         let coins = *coins_shared.lock().unwrap();

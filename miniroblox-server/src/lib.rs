@@ -20,11 +20,14 @@ pub struct Block {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Message {
     Login { code: String },
-    Move { name: String, x: f32, y: f32, z: f32 },
+    Move { name: String, x: f32, y: f32, z: f32, color: u8, owner: bool },
     Chat { name: String, text: String },
     World { blocks: Vec<Block> },
     BlockBreak { name: String, x: i32, y: i32, z: i32 },
     Coins { coins: i64 },
+    Buy { name: String, item: String },
+    Bought { item: String, coins: i64 },
+    Spawn { x: f32, z: f32 },
 }
 
 // Send one message: [4-byte length][bincode bytes].
