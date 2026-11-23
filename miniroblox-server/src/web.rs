@@ -16,9 +16,9 @@ const STYLE_CSS: &str = include_str!("../web/style.css");
 const APP_JS: &str = include_str!("../web/app.js");
 
 const CLIENT_ID: &str =
-    "682624579295-hc9fqes8btvs795f2udl0mivhelc349i.apps.googleusercontent.com";
-// Redirect สำหรับ admin web — ต้องลงทะเบียน URI นี้ใน Google Cloud Console (Credentials)
-const WEB_REDIRECT: &str = "http://45.91.134.37:8089/oauth2callback";
+    "682624579295-rtgjcfqmkk0deda7ji43r4lcje5jsiqp.apps.googleusercontent.com";
+// Redirect สำหรับ admin web — ต้องตรงกับที่ลงทะเบียนใน Google Cloud Console
+const WEB_REDIRECT: &str = "https://admin.bcchon.com/oauth2callback";
 
 #[derive(Clone, Copy, PartialEq)]
 enum Role {
@@ -103,7 +103,7 @@ pub fn run(
             }
             ("/oauth2callback", _) => {
                 match query_param(&query, "code") {
-                    Some(c) => match crate::auth::login_with_code_redirect(&c, WEB_REDIRECT) {
+                    Some(c) => match crate::auth::login_with_code_web(&c, WEB_REDIRECT) {
                         Some(email) => {
                             let tok = new_token();
                             sessions.lock().unwrap().insert(tok.clone(), email);
