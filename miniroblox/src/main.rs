@@ -3,6 +3,7 @@ use macroquad::audio::*;
 use gilrs::{Axis, Button, Gilrs};
 use std::collections::HashMap;
 use std::fs;
+use std::sync::{Arc, Mutex};
 
 mod net;
 
@@ -490,12 +491,31 @@ async fn main() {
     println!("โลก {} บล็อก (สุ่ม seed {}) +{:.1}s", world.len(), seed, t0.elapsed().as_secs_f32());
 
     // --- เชื่อมต่อเซิร์ฟเวอร์ (ถ้าเปิดอยู่) + โหลดโลกจากเซิร์ฟเวอร์ ---
+    let my_name = format!("player{}", std::process::id());
     let mut net_stream: Option<std::net::TcpStream> = None;
     let mut net_move_timer: f32 = 0.0;
-    match net::connect_and_join("127.0.0.1:7777", "player1") {
+    // ตำแหน่งผู้เล่นคนอื่น (ชื่อ -> ตำแหน่ง) อัปเดตจากเทรดรับข้อมูล
+    let other_players: Arc<Mutex<HashMap<String, Vec3>>> = Arc::new(Mutex::new(HashMap::new()));
+    match net::connect_and_join("127.0.0.1:7777", &my_name) {
         Some((stream, blocks)) => {
             for b in &blocks {
                 world.insert((b.x, b.y, b.z), block_from_u8(b.block));
+            }
+            // โคลน stream ไว้ให้เทรดรับข้อมูล (ตัวหลักใช้ส่งตำแหน่ง)
+            if let Ok(mut recv) = stream.try_clone() {
+                let other_players = Arc::clone(&other_players);
+                let my_name = my_name.clone();
+                std::thread::spawn(move || loop {
+                    match net::recv_msg(&mut recv) {
+                        Ok(net::Message::Move { name, x, y, z }) => {
+                            if name != my_name {
+                                other_players.lock().unwrap().insert(name, vec3(x, y, z));
+                            }
+                        }
+                        Ok(_) => {}
+                        Err(_) => break,
+                    }
+                });
             }
             net_stream = Some(stream);
             println!("เชื่อมต่อเซิร์ฟเวอร์แล้ว: ได้รับ {} บล็อก +{:.1}s", blocks.len(), t0.elapsed().as_secs_f32());
@@ -650,7 +670,7 @@ async fn main() {
             if net_move_timer <= 0.0 {
                 net_move_timer = 0.5;
                 let _ = net::send_msg(stream, &net::Message::Move {
-                    x: cam_pos.x, y: cam_pos.y, z: cam_pos.z,
+                    name: my_name.clone(), x: cam_pos.x, y: cam_pos.y, z: cam_pos.z,
                 });
             }
         }
@@ -1317,6 +1337,12 @@ async fn main() {
         draw_cube(vec3(cam_pos.x, 0.03, cam_pos.z), vec3(0.7, 0.03, 0.7), None, shadow);
         for w in &wolves {
             draw_cube(vec3(w.pos.x, 0.03, w.pos.z), vec3(0.8, 0.03, 0.8), None, shadow);
+        }
+        // ผู้เล่นคนอื่น (จากเซิร์ฟเวอร์) — ลำตัวสีน้ำเงิน + หัว
+        for (_name, pos) in other_players.lock().unwrap().iter() {
+            let body = vec3(pos.x, pos.y - 0.9, pos.z);
+            draw_cube(body, vec3(0.6, 1.8, 0.6), None, BLUE);
+            draw_cube(body + vec3(0.0, 1.2, 0.0), vec3(0.5, 0.5, 0.5), None, SKYBLUE);
         }
         // อนุภาคทุบบล็อก
         for p in &particles {

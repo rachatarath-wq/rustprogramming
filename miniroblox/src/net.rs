@@ -15,7 +15,7 @@ pub struct Block {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Message {
     Join { name: String },
-    Move { x: f32, y: f32, z: f32 },
+    Move { name: String, x: f32, y: f32, z: f32 },
     World { blocks: Vec<Block> },
 }
 
