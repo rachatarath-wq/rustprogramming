@@ -1525,16 +1525,22 @@ async fn main() {
         {
             let log = chat_log.lock().unwrap();
             let start = if log.len() > 6 { log.len() - 6 } else { 0 };
-            let mut cy = screen_height() - 46.0;
+            let n = log.len() - start;
+            let base = screen_height() - 90.0;
+            // พื้นหลังโปร่งแสงกันข้อความกลืนกับหิน/ไม้
+            let top = base - 30.0 * (n as f32 - 1.0) - 8.0;
+            let bottom = screen_height() - 36.0;
+            draw_rectangle(10.0, top, 520.0, bottom - top, Color::from_rgba(0, 0, 0, 140));
+            let mut cy = base;
             for (name, text) in &log[start..] {
                 let line = format!("{}: {}", name, text);
                 thai.draw(&line, 20.0, cy, 18.0, WHITE);
                 cy -= 30.0;
             }
             if chat_open {
-                thai.draw(&format!("> {}", chat_input), 20.0, screen_height() - 24.0, 18.0, YELLOW);
+                thai.draw(&format!("> {}", chat_input), 20.0, screen_height() - 68.0, 18.0, YELLOW);
             } else {
-                thai.draw("T: chat", 20.0, screen_height() - 22.0, 16.0, Color::from_rgba(200, 200, 200, 160));
+                thai.draw("T: chat", 20.0, screen_height() - 66.0, 16.0, Color::from_rgba(200, 200, 200, 160));
             }
         }
         if autoplay {
