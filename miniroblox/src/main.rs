@@ -556,6 +556,11 @@ async fn main() {
     let mut thai = thai_text::ThaiText::new();
     let mut chat_open = false;
     let mut chat_input = String::new();
+    // ร้านค้า: B เปิด/ปิด, ลูกศรเลือก, Enter ซื้อ (รายการตรงกับ server: apple/heal)
+    let mut shop_open = false;
+    let mut shop_sel: usize = 0;
+    // ของที่ซื้อสำเร็จ (server ตอบ Bought มา) — รอ apply effect ใน main loop
+    let bought_shared: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
     match net::connect_with_google_login(&server_addr) {
         Some((stream, blocks, sx, sz, owner)) => {
             spawn_offset = (sx as i32, sz as i32);
@@ -569,6 +574,7 @@ async fn main() {
                 let chat_log = Arc::clone(&chat_log);
                 let coins_shared = Arc::clone(&coins_shared);
                 let pending_breaks = Arc::clone(&pending_breaks);
+                let bought_shared = Arc::clone(&bought_shared);
                 std::thread::spawn(move || loop {
                     match net::recv_msg(&mut recv) {
                         Ok(net::Message::Move { name, x, y, z, color, owner }) => {
@@ -586,6 +592,10 @@ async fn main() {
                         }
                         Ok(net::Message::Coins { coins }) => {
                             *coins_shared.lock().unwrap() = coins;
+                        }
+                        Ok(net::Message::Bought { item, coins }) => {
+                            *coins_shared.lock().unwrap() = coins;
+                            bought_shared.lock().unwrap().push(item);
                         }
                         Ok(net::Message::BlockBreak { x, y, z, .. }) => {
                             pending_breaks.lock().unwrap().push((x, y, z));
@@ -747,6 +757,18 @@ async fn main() {
 
     loop {
         let dt = get_frame_time();
+
+        // --- ใช้ของที่ซื้อสำเร็จจากร้านค้า (server ตอบ Bought กลับมา) ---
+        {
+            let mut bought = bought_shared.lock().unwrap();
+            for item in bought.drain(..) {
+                if item == "apple" {
+                    hunger = (hunger + 20.0).min(100.0);
+                } else if item == "heal" {
+                    hp = (hp + 40.0).min(100.0);
+                }
+            }
+        }
 
         // ส่งตำแหน่งผู้เล่นให้เซิร์ฟเวอร์ทุก 0.5s (ถ้าเชื่อมต่ออยู่)
         if let Some(stream) = net_stream.as_mut() {
@@ -948,7 +970,7 @@ async fn main() {
         }
 
         // --- มองรอบด้วยเมาส์ (เฉพาะตอนเล่นเอง) ---
-        if mouse_grabbed && !autoplay && !settings_open && !gpad_menu_open && !color_menu_open {
+        if mouse_grabbed && !autoplay && !settings_open && !gpad_menu_open && !color_menu_open && !shop_open {
             let mouse_delta = mouse_delta_position();
             yaw -= mouse_delta.x * mouse_sens;
             pitch = (pitch - mouse_delta.y * mouse_sens).clamp(-1.5, 1.5);
@@ -1088,7 +1110,7 @@ async fn main() {
         let mut target = Vec3::ZERO;
         if autoplay {
             target = auto_dir * move_speed;
-        } else if !settings_open && !gpad_menu_open && !color_menu_open {
+        } else if !settings_open && !gpad_menu_open && !color_menu_open && !shop_open {
             if is_key_down(KeyCode::W) { target += flat_fwd; }
             if is_key_down(KeyCode::S) { target -= flat_fwd; }
             if is_key_down(KeyCode::D) { target += right; }
@@ -1125,7 +1147,7 @@ async fn main() {
 
         vel.y -= GRAVITY * dt;
         vel.y = vel.y.max(-30.0);
-        if grounded && ((!settings_open && !gpad_menu_open && !color_menu_open && (is_key_pressed(KeyCode::Space) || gp_jump)) || (autoplay && stuck_timer > 0.4)) {
+        if grounded && ((!settings_open && !gpad_menu_open && !color_menu_open && !shop_open && (is_key_pressed(KeyCode::Space) || gp_jump)) || (autoplay && stuck_timer > 0.4)) {
             vel.y = jump_speed;
             grounded = false;
             stuck_timer = 0.0;
@@ -1181,6 +1203,26 @@ async fn main() {
             if is_key_pressed(KeyCode::Left) { color_sel = (color_sel + 15) % 16; }
             if is_key_pressed(KeyCode::Right) { color_sel = (color_sel + 1) % 16; }
             my_color = color_sel as u8;
+        }
+        // --- ร้านค้า (B): ลูกศรเลือก, Enter ซื้อ ---
+        if is_key_pressed(KeyCode::B) && !chat_open && !settings_open && !gpad_menu_open && !color_menu_open {
+            shop_open = !shop_open;
+            set_cursor_grab(!shop_open);
+            mouse_grabbed = !shop_open;
+        }
+        if shop_open {
+            if is_key_pressed(KeyCode::Up) || is_key_pressed(KeyCode::Down) {
+                shop_sel = (shop_sel + 1) % 2;
+            }
+            if is_key_pressed(KeyCode::Enter) {
+                if let Some(stream) = net_stream.as_mut() {
+                    let item = if shop_sel == 0 { "apple" } else { "heal" };
+                    let _ = net::send_msg(stream, &net::Message::Buy {
+                        name: String::new(),
+                        item: item.to_string(),
+                    });
+                }
+            }
         }
         if gp_sel_next { selected = block_next(selected); }
         if gp_sel_prev { selected = block_prev(selected); }
@@ -1686,7 +1728,7 @@ async fn main() {
         }
 
         // --- HUD ---
-        draw_text("WASD: walk | Space: jump | LMB: hit/break | RMB: place | E: eat | V: view | H: home | P: auto | M: train | C: color | T: chat | Esc: mouse | F10: quit", 20.0, 30.0, 22.0, WHITE);
+        draw_text("WASD: walk | Space: jump | LMB: hit/break | RMB: place | E: eat | V: view | H: home | P: auto | M: train | C: color | B: shop | T: chat | Esc: mouse | F10: quit", 20.0, 30.0, 22.0, WHITE);
 
         // ยอดเหรียญ (อัปเดตจากเซิร์ฟเวอร์) — วางใต้เรดาร์มุมขวาบน ไม่ให้ทับกัน
         let coins = *coins_shared.lock().unwrap();
@@ -1849,6 +1891,33 @@ async fn main() {
                 }
             }
             thai.draw("ลูกศร = เลือกสี    C = ปิด", cx - 150.0, y0 + h - 46.0, 20.0, Color::from_rgba(255, 255, 255, 190));
+        }
+        if shop_open {
+            let sw = screen_width();
+            let sh = screen_height();
+            let cx = sw / 2.0;
+            let cy = sh / 2.0;
+            let w = 480.0;
+            let h = 310.0;
+            let x0 = cx - w / 2.0;
+            let y0 = cy - h / 2.0;
+            draw_rectangle(x0, y0, w, h, Color::from_rgba(18, 22, 30, 235));
+            draw_rectangle_lines(x0, y0, w, h, 2.0, GOLD);
+            thai.draw("ร้านค้า — ใช้เหรียญซื้อของ", cx - 180.0, y0 + 20.0, 30.0, GOLD);
+            let items = [
+                ("แอปเปิ้ล (เพิ่มความอิ่ม)", "5 เหรียญ"),
+                ("ยาฮีล (ฟื้นเลือด)", "10 เหรียญ"),
+            ];
+            for i in 0..2 {
+                let y = y0 + 100.0 + i as f32 * 60.0;
+                if i == shop_sel {
+                    draw_rectangle(x0 + 16.0, y - 14.0, w - 32.0, 50.0, Color::from_rgba(255, 255, 255, 26));
+                }
+                thai.draw(&format!("{}  ·  {}", items[i].0, items[i].1), x0 + 34.0, y, 26.0, if i == shop_sel { YELLOW } else { WHITE });
+            }
+            let coins = *coins_shared.lock().unwrap();
+            thai.draw(&format!("เหรียญของคุณ: {}", coins), x0 + 34.0, y0 + h - 48.0, 22.0, GOLD);
+            thai.draw("ลูกศร = เลือก   Enter = ซื้อ   B = ปิด", cx - 190.0, y0 + h - 16.0, 18.0, Color::from_rgba(200, 200, 200, 160));
         }
 
         // Hotbar (เลือกบล็อก 1-8 สไตล์ Roblox)
