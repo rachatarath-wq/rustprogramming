@@ -1085,20 +1085,31 @@ async fn main() {
 
         // --- เดิน (ใช้ทิศทางแบน ไม่รวมมุมก้มเงย → ได้ความเร็วเต็มเสมอ) ---
         let flat_fwd = vec3(yaw.sin(), 0.0, yaw.cos());
-        let mut horiz = Vec3::ZERO;
+        let mut target = Vec3::ZERO;
         if autoplay {
-            horiz = auto_dir * move_speed;
+            target = auto_dir * move_speed;
         } else if !settings_open && !gpad_menu_open && !color_menu_open {
-            if is_key_down(KeyCode::W) { horiz += flat_fwd; }
-            if is_key_down(KeyCode::S) { horiz -= flat_fwd; }
-            if is_key_down(KeyCode::D) { horiz += right; }
-            if is_key_down(KeyCode::A) { horiz -= right; }
+            if is_key_down(KeyCode::W) { target += flat_fwd; }
+            if is_key_down(KeyCode::S) { target -= flat_fwd; }
+            if is_key_down(KeyCode::D) { target += right; }
+            if is_key_down(KeyCode::A) { target -= right; }
             if gp_move != Vec2::ZERO {
-                horiz += flat_fwd * (-gp_move.y) + right * gp_move.x;
+                target += flat_fwd * (-gp_move.y) + right * gp_move.x;
             }
-            if horiz != Vec3::ZERO {
-                horiz = horiz.normalize() * move_speed;
+            if target != Vec3::ZERO {
+                target = target.normalize() * move_speed;
             }
+        }
+        // --- เร่ง/หน่วงแบบสมจริง (inertia): ความเร็วค่อย ๆ เข้าหาเป้า ไม่ตัดทันที ---
+        let accel = if grounded { 45.0 } else { 15.0 }; // m/s^2
+        let decel = if grounded { 60.0 } else { 6.0 };  // หยุดบนพื้นไว กลางอากาศเอื่อย
+        let mut horiz = vec3(vel.x, 0.0, vel.z);
+        let diff = target - horiz;
+        let dlen = diff.length();
+        if dlen > 0.0001 {
+            let rate = if target == Vec3::ZERO || diff.dot(horiz) < 0.0 { decel } else { accel };
+            let step = (rate * dt).min(dlen);
+            horiz += diff / dlen * step;
         }
         vel.x = horiz.x;
         vel.z = horiz.z;
@@ -1825,7 +1836,7 @@ async fn main() {
             let y0 = cy - h / 2.0;
             draw_rectangle(x0, y0, w, h, Color::from_rgba(18, 22, 30, 232));
             draw_rectangle_lines(x0, y0, w, h, 2.0, GOLD);
-            draw_text("แต่งตัว — เลือกสีชุด", cx - 150.0, y0 + 44.0, 30.0, GOLD);
+            thai.draw("แต่งตัว — เลือกสีชุด", cx - 150.0, y0 + 18.0, 30.0, GOLD);
             let cell = 70.0;
             let gap = 10.0;
             let gx0 = x0 + 40.0;
@@ -1838,7 +1849,7 @@ async fn main() {
                     draw_rectangle_lines(px - 4.0, py - 4.0, cell + 8.0, cell + 8.0, 3.0, WHITE);
                 }
             }
-            draw_text("ลูกศร = เลือกสี    C = ปิด", cx - 150.0, y0 + h - 28.0, 20.0, Color::from_rgba(255, 255, 255, 190));
+            thai.draw("ลูกศร = เลือกสี    C = ปิด", cx - 150.0, y0 + h - 46.0, 20.0, Color::from_rgba(255, 255, 255, 190));
         }
 
         // Hotbar (เลือกบล็อก 1-8 สไตล์ Roblox)
