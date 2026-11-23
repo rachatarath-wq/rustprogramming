@@ -561,6 +561,11 @@ async fn main() {
     let mut shop_sel: usize = 0;
     // ของที่ซื้อสำเร็จ (server ตอบ Bought มา) — รอ apply effect ใน main loop
     let bought_shared: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+    // เทรด (F): เสนอเหรียญให้ผู้เล่นอื่น, รับข้อเสนอแล้วกด Y/N
+    let mut trade_open = false;
+    let mut trade_sel: usize = 0;
+    let trade_ask_shared: Arc<Mutex<Option<(String, i64)>>> = Arc::new(Mutex::new(None));
+    let trade_msg_shared: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
     match net::connect_with_google_login(&server_addr) {
         Some((stream, blocks, sx, sz, owner)) => {
             spawn_offset = (sx as i32, sz as i32);
@@ -575,6 +580,8 @@ async fn main() {
                 let coins_shared = Arc::clone(&coins_shared);
                 let pending_breaks = Arc::clone(&pending_breaks);
                 let bought_shared = Arc::clone(&bought_shared);
+                let trade_ask_shared = Arc::clone(&trade_ask_shared);
+                let trade_msg_shared = Arc::clone(&trade_msg_shared);
                 std::thread::spawn(move || loop {
                     match net::recv_msg(&mut recv) {
                         Ok(net::Message::Move { name, x, y, z, color, owner }) => {
@@ -596,6 +603,14 @@ async fn main() {
                         Ok(net::Message::Bought { item, coins }) => {
                             *coins_shared.lock().unwrap() = coins;
                             bought_shared.lock().unwrap().push(item);
+                        }
+                        Ok(net::Message::TradeAsk { from, amount }) => {
+                            *trade_ask_shared.lock().unwrap() = Some((from, amount));
+                        }
+                        Ok(net::Message::TradeDone { ok: _, coins, msg }) => {
+                            *coins_shared.lock().unwrap() = coins;
+                            *trade_msg_shared.lock().unwrap() = Some(msg);
+                            *trade_ask_shared.lock().unwrap() = None;
                         }
                         Ok(net::Message::BlockBreak { x, y, z, .. }) => {
                             pending_breaks.lock().unwrap().push((x, y, z));
@@ -970,7 +985,7 @@ async fn main() {
         }
 
         // --- มองรอบด้วยเมาส์ (เฉพาะตอนเล่นเอง) ---
-        if mouse_grabbed && !autoplay && !settings_open && !gpad_menu_open && !color_menu_open && !shop_open {
+        if mouse_grabbed && !autoplay && !settings_open && !gpad_menu_open && !color_menu_open && !shop_open && !trade_open {
             let mouse_delta = mouse_delta_position();
             yaw -= mouse_delta.x * mouse_sens;
             pitch = (pitch - mouse_delta.y * mouse_sens).clamp(-1.5, 1.5);
@@ -1110,7 +1125,7 @@ async fn main() {
         let mut target = Vec3::ZERO;
         if autoplay {
             target = auto_dir * move_speed;
-        } else if !settings_open && !gpad_menu_open && !color_menu_open && !shop_open {
+        } else if !settings_open && !gpad_menu_open && !color_menu_open && !shop_open && !trade_open {
             if is_key_down(KeyCode::W) { target += flat_fwd; }
             if is_key_down(KeyCode::S) { target -= flat_fwd; }
             if is_key_down(KeyCode::D) { target += right; }
@@ -1147,7 +1162,7 @@ async fn main() {
 
         vel.y -= GRAVITY * dt;
         vel.y = vel.y.max(-30.0);
-        if grounded && ((!settings_open && !gpad_menu_open && !color_menu_open && !shop_open && (is_key_pressed(KeyCode::Space) || gp_jump)) || (autoplay && stuck_timer > 0.4)) {
+        if grounded && ((!settings_open && !gpad_menu_open && !color_menu_open && !shop_open && !trade_open && (is_key_pressed(KeyCode::Space) || gp_jump)) || (autoplay && stuck_timer > 0.4)) {
             vel.y = jump_speed;
             grounded = false;
             stuck_timer = 0.0;
@@ -1222,6 +1237,47 @@ async fn main() {
                         item: item.to_string(),
                     });
                 }
+            }
+        }
+        // --- เทรด (F): เลือกผู้เล่น -> Enter เสนอ 10 เหรียญ ---
+        if is_key_pressed(KeyCode::F) && !chat_open && !settings_open && !gpad_menu_open && !color_menu_open && !shop_open {
+            trade_open = !trade_open;
+            set_cursor_grab(!trade_open);
+            mouse_grabbed = !trade_open;
+            trade_sel = 0;
+        }
+        if trade_open {
+            let names: Vec<String> = other_players.lock().unwrap().keys().cloned().collect();
+            if !names.is_empty() {
+                if is_key_pressed(KeyCode::Up) {
+                    trade_sel = (trade_sel + names.len() - 1) % names.len();
+                }
+                if is_key_pressed(KeyCode::Down) {
+                    trade_sel = (trade_sel + 1) % names.len();
+                }
+                if is_key_pressed(KeyCode::Enter) {
+                    if let Some(stream) = net_stream.as_mut() {
+                        let _ = net::send_msg(stream, &net::Message::TradeOffer {
+                            to: names[trade_sel].clone(),
+                            amount: 10,
+                        });
+                    }
+                }
+            }
+        }
+        // ตอบรับ/ปฏิเสธข้อเสนอเทรดที่เข้ามา (Y/N)
+        if trade_ask_shared.lock().unwrap().is_some() {
+            if is_key_pressed(KeyCode::Y) {
+                if let Some(stream) = net_stream.as_mut() {
+                    let _ = net::send_msg(stream, &net::Message::TradeReply { accept: true });
+                }
+                *trade_ask_shared.lock().unwrap() = None;
+            }
+            if is_key_pressed(KeyCode::N) {
+                if let Some(stream) = net_stream.as_mut() {
+                    let _ = net::send_msg(stream, &net::Message::TradeReply { accept: false });
+                }
+                *trade_ask_shared.lock().unwrap() = None;
             }
         }
         if gp_sel_next { selected = block_next(selected); }
@@ -1728,7 +1784,7 @@ async fn main() {
         }
 
         // --- HUD ---
-        draw_text("WASD: walk | Space: jump | LMB: hit/break | RMB: place | E: eat | V: view | H: home | P: auto | M: train | C: color | B: shop | T: chat | Esc: mouse | F10: quit", 20.0, 30.0, 22.0, WHITE);
+        draw_text("WASD: walk | Space: jump | LMB: hit/break | RMB: place | E: eat | V: view | H: home | P: auto | M: train | C: color | B: shop | F: trade | T: chat | Esc: mouse | F10: quit", 20.0, 30.0, 22.0, WHITE);
 
         // ยอดเหรียญ (อัปเดตจากเซิร์ฟเวอร์) — วางใต้เรดาร์มุมขวาบน ไม่ให้ทับกัน
         let coins = *coins_shared.lock().unwrap();
@@ -1918,6 +1974,45 @@ async fn main() {
             let coins = *coins_shared.lock().unwrap();
             thai.draw(&format!("เหรียญของคุณ: {}", coins), x0 + 34.0, y0 + h - 48.0, 22.0, GOLD);
             thai.draw("ลูกศร = เลือก   Enter = ซื้อ   B = ปิด", cx - 190.0, y0 + h - 16.0, 18.0, Color::from_rgba(200, 200, 200, 160));
+        }
+        if trade_open {
+            let sw = screen_width();
+            let sh = screen_height();
+            let cx = sw / 2.0;
+            let cy = sh / 2.0;
+            let w = 480.0;
+            let h = 300.0;
+            let x0 = cx - w / 2.0;
+            let y0 = cy - h / 2.0;
+            draw_rectangle(x0, y0, w, h, Color::from_rgba(18, 22, 30, 235));
+            draw_rectangle_lines(x0, y0, w, h, 2.0, GOLD);
+            thai.draw("เทรด — ให้ 10 เหรียญ", cx - 140.0, y0 + 20.0, 30.0, GOLD);
+            let names: Vec<String> = other_players.lock().unwrap().keys().cloned().collect();
+            if names.is_empty() {
+                thai.draw("ไม่มีผู้เล่นอื่นออนไลน์", x0 + 34.0, y0 + 110.0, 24.0, Color::from_rgba(200, 200, 200, 180));
+            } else {
+                for (i, n) in names.iter().enumerate() {
+                    let y = y0 + 100.0 + i as f32 * 48.0;
+                    if i == trade_sel {
+                        draw_rectangle(x0 + 16.0, y - 14.0, w - 32.0, 42.0, Color::from_rgba(255, 255, 255, 26));
+                    }
+                    thai.draw(n, x0 + 34.0, y, 24.0, if i == trade_sel { YELLOW } else { WHITE });
+                }
+            }
+            thai.draw("ลูกศร = เลือก   Enter = เสนอ   F = ปิด", cx - 210.0, y0 + h - 16.0, 18.0, Color::from_rgba(200, 200, 200, 160));
+        }
+        // ข้อเสนอเทรดที่เข้ามา (ตอบ Y/N)
+        if let Some((from, amount)) = trade_ask_shared.lock().unwrap().clone() {
+            let sw = screen_width();
+            let sh = screen_height();
+            let cx = sw / 2.0;
+            let y0 = sh / 2.0 - 40.0;
+            thai.draw(&format!("{} เสนอให้ {} เหรียญ", from, amount), cx - 200.0, y0, 26.0, YELLOW);
+            thai.draw("Y = รับ    N = ปฏิเสธ", cx - 120.0, y0 + 40.0, 22.0, WHITE);
+        }
+        // ผลการเทรดล่าสุด (ข้อความเด้งมุมซ้ายล่าง)
+        if let Some(msg) = trade_msg_shared.lock().unwrap().clone() {
+            thai.draw(&msg, 20.0, screen_height() - 140.0, 18.0, GOLD);
         }
 
         // Hotbar (เลือกบล็อก 1-8 สไตล์ Roblox)

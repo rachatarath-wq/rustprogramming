@@ -28,6 +28,10 @@ pub enum Message {
     Buy { name: String, item: String },
     Bought { item: String, coins: i64 },
     Spawn { x: f32, z: f32, owner: bool },
+    TradeOffer { to: String, amount: i64 },
+    TradeAsk { from: String, amount: i64 },
+    TradeReply { accept: bool },
+    TradeDone { ok: bool, coins: i64, msg: String },
 }
 
 // Send one message: [4-byte length][bincode bytes].

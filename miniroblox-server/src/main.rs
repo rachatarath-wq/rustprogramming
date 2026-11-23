@@ -35,6 +35,9 @@ fn main() {
     println!("world ready: {} blocks", world.lock().unwrap().len());
 
     let clients: Clients = Arc::new(Mutex::new(HashMap::new()));
+    // การเทรดที่รอตอบรับ: ชื่อผู้รับ -> (ชื่อผู้ส่ง, จำนวนเหรียญ)
+    let pending_trades: Arc<Mutex<HashMap<String, (String, i64)>>> =
+        Arc::new(Mutex::new(HashMap::new()));
     // อีเมลเจ้าของเซิร์ฟเวอร์ — ได้มงกุฎทอง + ตัวใหญ่กว่า (ตั้งค่า OWNER_EMAIL เพื่อเปลี่ยน)
     let owner_email: String =
         std::env::var("OWNER_EMAIL").unwrap_or_else(|_| "rachata.rath@gmail.com".to_string());
@@ -60,7 +63,8 @@ fn main() {
         let db = Arc::clone(&db);
         let world = Arc::clone(&world);
         let owner_email = owner_email.clone();
-        thread::spawn(move || handle(stream, clients, db, world, owner_email));
+        let pending_trades = Arc::clone(&pending_trades);
+        thread::spawn(move || handle(stream, clients, db, world, owner_email, pending_trades));
     }
 }
 
@@ -70,6 +74,7 @@ fn handle(
     db: Arc<Mutex<rusqlite::Connection>>,
     world: World,
     owner_email: String,
+    pending_trades: Arc<Mutex<HashMap<String, (String, i64)>>>,
 ) {
     let mut my_name: Option<String> = None;
     let mut my_owner = false;
@@ -183,6 +188,75 @@ fn handle(
                     } else {
                         // เหรียญไม่พอ — ส่งยอดปัจจุบันกลับไป
                         let _ = send_msg(&mut stream, &Message::Coins { coins });
+                    }
+                }
+            }
+            // Trade: เสนอให้เหรียญผู้เล่นอื่น -> ส่งคำขอไปให้เป้าหมาย
+            Message::TradeOffer { to, amount } => {
+                let name = my_name.clone().unwrap_or_default();
+                let my_coins = {
+                    let conn = db.lock().unwrap();
+                    db::get_coins(&conn, &name)
+                };
+                let target_stream = clients
+                    .lock()
+                    .unwrap()
+                    .get(to.as_str())
+                    .and_then(|s| s.try_clone().ok());
+                if *amount > 0 && my_coins >= *amount && target_stream.is_some() {
+                    pending_trades
+                        .lock()
+                        .unwrap()
+                        .insert(to.clone(), (name.clone(), *amount));
+                    let ask = Message::TradeAsk { from: name, amount: *amount };
+                    let _ = send_msg(&mut target_stream.unwrap(), &ask);
+                } else {
+                    let done = Message::TradeDone {
+                        ok: false,
+                        coins: my_coins,
+                        msg: "trade failed: not enough coins or player not found".to_string(),
+                    };
+                    let _ = send_msg(&mut stream, &done);
+                }
+            }
+            // Trade reply: เป้าหมายตอบรับหรือปฏิเสธ
+            Message::TradeReply { accept } => {
+                let name = my_name.clone().unwrap_or_default();
+                let pending = pending_trades.lock().unwrap().remove(&name);
+                if let Some((from, amount)) = pending {
+                    if *accept {
+                        let (sender_coins, my_coins) = {
+                            let conn = db.lock().unwrap();
+                            let a = db::add_coins(&conn, &from, -amount);
+                            let b = db::add_coins(&conn, &name, amount);
+                            (a, b)
+                        };
+                        if let Some(s) = clients
+                            .lock()
+                            .unwrap()
+                            .get(from.as_str())
+                            .and_then(|s| s.try_clone().ok())
+                        {
+                            let mut ss = s;
+                            let _ = send_msg(&mut ss, &Message::Coins { coins: sender_coins });
+                        }
+                        let done = Message::TradeDone {
+                            ok: true,
+                            coins: my_coins,
+                            msg: format!("received {} coins from {}", amount, from),
+                        };
+                        let _ = send_msg(&mut stream, &done);
+                    } else {
+                        let coins = {
+                            let conn = db.lock().unwrap();
+                            db::get_coins(&conn, &name)
+                        };
+                        let done = Message::TradeDone {
+                            ok: false,
+                            coins,
+                            msg: "trade rejected".to_string(),
+                        };
+                        let _ = send_msg(&mut stream, &done);
                     }
                 }
             }
