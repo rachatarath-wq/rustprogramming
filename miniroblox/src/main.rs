@@ -1529,7 +1529,7 @@ async fn main() {
             for (name, text) in &log[start..] {
                 let line = format!("{}: {}", name, text);
                 thai.draw(&line, 20.0, cy, 18.0, WHITE);
-                cy -= 22.0;
+                cy -= 30.0;
             }
             if chat_open {
                 thai.draw(&format!("> {}", chat_input), 20.0, screen_height() - 46.0, 18.0, YELLOW);
