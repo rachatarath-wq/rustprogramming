@@ -45,7 +45,12 @@ pub fn recv_msg(stream: &mut TcpStream) -> std::io::Result<Message> {
 pub fn connect_with_google_login(addr: &str) -> Option<(TcpStream, Vec<Block>)> {
     let _probe =
         TcpStream::connect_timeout(&addr.parse().ok()?, Duration::from_millis(800)).ok()?;
-    let code = oauth_login()?;
+    // DEV=1: ข้าม Google (ใช้ "dev:player") สำหรับทดสอบเร็ว ๆ
+    let code = if std::env::var("DEV").map(|v| v == "1").unwrap_or(false) {
+        "dev:player".to_string()
+    } else {
+        oauth_login()?
+    };
     connect_and_login(addr, &code)
 }
 
