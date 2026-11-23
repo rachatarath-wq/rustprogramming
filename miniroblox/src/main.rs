@@ -1571,9 +1571,8 @@ async fn main() {
         // ตัวผู้เล่น (บุคคลที่ 3)
         if third_person {
             let skin = Color::from_rgba(230, 190, 150, 255);
-            let (shirt, pants) = if my_owner {
-                (GOLD, GOLD)
-            } else {
+            // สีชุด = สีที่เลือกเสมอ (เจ้าของมีมงกุฎทองเป็นตัวบอกอยู่แล้ว)
+            let (shirt, pants) = {
                 let c = player_color(my_color);
                 (c, c)
             };
