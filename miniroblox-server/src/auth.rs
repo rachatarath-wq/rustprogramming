@@ -20,30 +20,35 @@ struct TokenInfo {
     aud: Option<String>,
 }
 
-// game: loopback redirect + game client id
+// game: loopback redirect + game client id + game secret
 pub fn login_with_code(code: &str) -> Option<String> {
-    exchange_and_verify(code, GAME_CLIENT_ID, GAME_REDIRECT)
+    let secret = std::env::var("GOOGLE_CLIENT_SECRET").ok()?;
+    exchange_and_verify(code, GAME_CLIENT_ID, &secret, GAME_REDIRECT)
 }
 
-// admin web: its own client id + https redirect
+// admin web: its own client id + secret + https redirect
 pub fn login_with_code_web(code: &str, redirect_uri: &str) -> Option<String> {
-    exchange_and_verify(code, WEB_CLIENT_ID, redirect_uri)
+    let secret = std::env::var("WEB_CLIENT_SECRET").ok()?;
+    exchange_and_verify(code, WEB_CLIENT_ID, &secret, redirect_uri)
 }
 
-fn exchange_and_verify(code: &str, client_id: &str, redirect_uri: &str) -> Option<String> {
+fn exchange_and_verify(
+    code: &str,
+    client_id: &str,
+    client_secret: &str,
+    redirect_uri: &str,
+) -> Option<String> {
     // Dev mode (DEV=1): "dev:name" bypasses Google — for local testing only.
     if std::env::var("DEV").map(|v| v == "1").unwrap_or(false) {
         if let Some(name) = code.strip_prefix("dev:") {
             return Some(name.to_string());
         }
     }
-    // The client secret stays on the server (never in the game binary).
-    let secret = std::env::var("GOOGLE_CLIENT_SECRET").ok()?;
     let resp = ureq::post("https://oauth2.googleapis.com/token")
         .send_form(&[
             ("code", code),
             ("client_id", client_id),
-            ("client_secret", secret.as_str()),
+            ("client_secret", client_secret),
             ("redirect_uri", redirect_uri),
             ("grant_type", "authorization_code"),
         ])
