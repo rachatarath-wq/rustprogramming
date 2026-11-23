@@ -650,6 +650,8 @@ async fn main() {
     let mut gpad_look_speed: f32 = 3.0;
     let mut gpad_deadzone: f32 = 0.15;
     let mut settings_open = false;
+    let mut color_menu_open = false;
+    let mut color_sel: usize = 0;
     let mut settings_sel: usize = 0;
     let mut gpad_menu_open = false;
     let mut gpad_menu_sel: usize = 0;
@@ -946,7 +948,7 @@ async fn main() {
         }
 
         // --- มองรอบด้วยเมาส์ (เฉพาะตอนเล่นเอง) ---
-        if mouse_grabbed && !autoplay && !settings_open && !gpad_menu_open {
+        if mouse_grabbed && !autoplay && !settings_open && !gpad_menu_open && !color_menu_open {
             let mouse_delta = mouse_delta_position();
             yaw -= mouse_delta.x * mouse_sens;
             pitch = (pitch - mouse_delta.y * mouse_sens).clamp(-1.5, 1.5);
@@ -1086,7 +1088,7 @@ async fn main() {
         let mut horiz = Vec3::ZERO;
         if autoplay {
             horiz = auto_dir * move_speed;
-        } else if !settings_open && !gpad_menu_open {
+        } else if !settings_open && !gpad_menu_open && !color_menu_open {
             if is_key_down(KeyCode::W) { horiz += flat_fwd; }
             if is_key_down(KeyCode::S) { horiz -= flat_fwd; }
             if is_key_down(KeyCode::D) { horiz += right; }
@@ -1112,7 +1114,7 @@ async fn main() {
 
         vel.y -= GRAVITY * dt;
         vel.y = vel.y.max(-30.0);
-        if grounded && ((!settings_open && !gpad_menu_open && (is_key_pressed(KeyCode::Space) || gp_jump)) || (autoplay && stuck_timer > 0.4)) {
+        if grounded && ((!settings_open && !gpad_menu_open && !color_menu_open && (is_key_pressed(KeyCode::Space) || gp_jump)) || (autoplay && stuck_timer > 0.4)) {
             vel.y = jump_speed;
             grounded = false;
             stuck_timer = 0.0;
@@ -1157,7 +1159,18 @@ async fn main() {
         if is_key_pressed(KeyCode::Key6) { selected = Block::Glass; }
         if is_key_pressed(KeyCode::Key7) { selected = Block::Brick; }
         if is_key_pressed(KeyCode::Key8) { selected = Block::Snow; }
-        if is_key_pressed(KeyCode::C) && !settings_open && !gpad_menu_open { my_color = (my_color + 1) % 16; }
+        if is_key_pressed(KeyCode::C) && !chat_open && !settings_open && !gpad_menu_open {
+            color_menu_open = !color_menu_open;
+            set_cursor_grab(!color_menu_open);
+            mouse_grabbed = !color_menu_open;
+        }
+        if color_menu_open {
+            if is_key_pressed(KeyCode::Up) { color_sel = (color_sel + 12) % 16; }
+            if is_key_pressed(KeyCode::Down) { color_sel = (color_sel + 4) % 16; }
+            if is_key_pressed(KeyCode::Left) { color_sel = (color_sel + 15) % 16; }
+            if is_key_pressed(KeyCode::Right) { color_sel = (color_sel + 1) % 16; }
+            my_color = color_sel as u8;
+        }
         if gp_sel_next { selected = block_next(selected); }
         if gp_sel_prev { selected = block_prev(selected); }
         if is_key_pressed(KeyCode::R) {
@@ -1800,6 +1813,32 @@ async fn main() {
                 draw_text(r, x0 + 32.0, y, 26.0, if i == gpad_menu_sel { YELLOW } else { WHITE });
             }
             draw_text("Up/Down = select    Left/Right = change", cx - 215.0, y0 + h - 28.0, 20.0, Color::from_rgba(255, 255, 255, 190));
+        }
+        if color_menu_open {
+            let sw = screen_width();
+            let sh = screen_height();
+            let cx = sw / 2.0;
+            let cy = sh / 2.0;
+            let w = 390.0;
+            let h = 470.0;
+            let x0 = cx - w / 2.0;
+            let y0 = cy - h / 2.0;
+            draw_rectangle(x0, y0, w, h, Color::from_rgba(18, 22, 30, 232));
+            draw_rectangle_lines(x0, y0, w, h, 2.0, GOLD);
+            draw_text("แต่งตัว — เลือกสีชุด", cx - 150.0, y0 + 44.0, 30.0, GOLD);
+            let cell = 70.0;
+            let gap = 10.0;
+            let gx0 = x0 + 40.0;
+            let gy0 = y0 + 95.0;
+            for i in 0..16usize {
+                let px = gx0 + (i % 4) as f32 * (cell + gap);
+                let py = gy0 + (i / 4) as f32 * (cell + gap);
+                draw_rectangle(px, py, cell, cell, player_color(i as u8));
+                if i == color_sel {
+                    draw_rectangle_lines(px - 4.0, py - 4.0, cell + 8.0, cell + 8.0, 3.0, WHITE);
+                }
+            }
+            draw_text("ลูกศร = เลือกสี    C = ปิด", cx - 150.0, y0 + h - 28.0, 20.0, Color::from_rgba(255, 255, 255, 190));
         }
 
         // Hotbar (เลือกบล็อก 1-8 สไตล์ Roblox)
