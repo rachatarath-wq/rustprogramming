@@ -6,6 +6,7 @@ use std::fs;
 use std::sync::{Arc, Mutex};
 
 mod net;
+mod thai_text;
 
 // ตำแหน่งของบล็อกในโลก = พิกัดจำนวนเต็ม (x, y, z)
 type BlockPos = (i32, i32, i32);
@@ -496,6 +497,10 @@ async fn main() {
     let mut net_move_timer: f32 = 0.0;
     // ตำแหน่งผู้เล่นคนอื่น (ชื่อ -> ตำแหน่ง) อัปเดตจากเทรดรับข้อมูล
     let other_players: Arc<Mutex<HashMap<String, Vec3>>> = Arc::new(Mutex::new(HashMap::new()));
+    let chat_log: Arc<Mutex<Vec<(String, String)>>> = Arc::new(Mutex::new(Vec::new()));
+    let mut thai = thai_text::ThaiText::new();
+    let mut chat_open = false;
+    let mut chat_input = String::new();
     match net::connect_with_google_login(&server_addr) {
         Some((stream, blocks)) => {
             for b in &blocks {
@@ -504,10 +509,18 @@ async fn main() {
             // โคลน stream ไว้ให้เทรดรับข้อมูล (ตัวหลักใช้ส่งตำแหน่ง)
             if let Ok(mut recv) = stream.try_clone() {
                 let other_players = Arc::clone(&other_players);
+                let chat_log = Arc::clone(&chat_log);
                 std::thread::spawn(move || loop {
                     match net::recv_msg(&mut recv) {
                         Ok(net::Message::Move { name, x, y, z }) => {
                             other_players.lock().unwrap().insert(name, vec3(x, y, z));
+                        }
+                        Ok(net::Message::Chat { name, text }) => {
+                            let mut log = chat_log.lock().unwrap();
+                            log.push((name, text));
+                            if log.len() > 20 {
+                                log.remove(0);
+                            }
                         }
                         Ok(_) => {}
                         Err(_) => break,
@@ -669,6 +682,37 @@ async fn main() {
                 let _ = net::send_msg(stream, &net::Message::Move {
                     name: String::new(), x: cam_pos.x, y: cam_pos.y, z: cam_pos.z,
                 });
+            }
+        }
+
+        // --- แชท: T เปิด/ปิด, พิมพ์ + Enter ส่ง ---
+        if is_key_pressed(KeyCode::T) && !settings_open && !gpad_menu_open {
+            chat_open = !chat_open;
+            if chat_open {
+                chat_input.clear();
+            }
+        }
+        if chat_open {
+            while let Some(c) = get_char_pressed() {
+                match c {
+                    '\n' | '\r' => {
+                        if !chat_input.is_empty() {
+                            if let Some(stream) = net_stream.as_mut() {
+                                let _ = net::send_msg(stream, &net::Message::Chat {
+                                    name: String::new(),
+                                    text: chat_input.clone(),
+                                });
+                            }
+                            chat_input.clear();
+                        }
+                        chat_open = false;
+                    }
+                    '\u{8}' => {
+                        chat_input.pop();
+                    }
+                    c if !c.is_control() => chat_input.push(c),
+                    _ => {}
+                }
             }
         }
 
@@ -1476,6 +1520,23 @@ async fn main() {
 
         // --- HUD ---
         draw_text("WASD: walk | Space: jump | LMB: hit/break | RMB: place | E: eat | V: view | T: home | P: auto | M: train | Esc: mouse | F10: quit", 20.0, 30.0, 22.0, WHITE);
+
+        // --- แชท (log + input) ---
+        {
+            let log = chat_log.lock().unwrap();
+            let start = if log.len() > 6 { log.len() - 6 } else { 0 };
+            let mut cy = screen_height() - 46.0;
+            for (name, text) in &log[start..] {
+                let line = format!("{}: {}", name, text);
+                thai.draw(&line, 20.0, cy, 18.0, WHITE);
+                cy -= 22.0;
+            }
+            if chat_open {
+                thai.draw(&format!("> {}", chat_input), 20.0, screen_height() - 46.0, 18.0, YELLOW);
+            } else {
+                thai.draw("T: chat", 20.0, screen_height() - 22.0, 16.0, Color::from_rgba(200, 200, 200, 160));
+            }
+        }
         if autoplay {
             draw_texture(&thai_auto_tex, 20.0, 168.0, WHITE);
         }

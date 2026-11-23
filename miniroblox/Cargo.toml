@@ -9,6 +9,8 @@ gilrs = "0.10"
 serde = { version = "1", features = ["derive"] }
 bincode = "1"
 open = "5"
+fontdue = "0.8"
+rustybuzz = "0.14"
 
 [profile.release]
 opt-level = 3

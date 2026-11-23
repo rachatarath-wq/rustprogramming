@@ -20,6 +20,7 @@ pub struct Block {
 pub enum Message {
     Login { code: String },
     Move { name: String, x: f32, y: f32, z: f32 },
+    Chat { name: String, text: String },
     World { blocks: Vec<Block> },
 }
 

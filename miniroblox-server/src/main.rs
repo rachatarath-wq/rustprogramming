@@ -109,6 +109,17 @@ fn handle(
                     }
                 }
             }
+            // Chat: overwrite name (anti-spoofing), broadcast to EVERYONE (incl. sender).
+            Message::Chat { name: _, text } => {
+                let out = Message::Chat {
+                    name: my_name.clone().unwrap_or_default(),
+                    text: text.clone(),
+                };
+                let mut guard = clients.lock().unwrap();
+                for c in guard.values_mut() {
+                    let _ = send_msg(c, &out);
+                }
+            }
             _ => {}
         }
     }
