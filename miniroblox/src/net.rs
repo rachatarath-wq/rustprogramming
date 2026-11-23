@@ -22,6 +22,8 @@ pub enum Message {
     Move { name: String, x: f32, y: f32, z: f32 },
     Chat { name: String, text: String },
     World { blocks: Vec<Block> },
+    BlockBreak { name: String, x: i32, y: i32, z: i32 },
+    Coins { coins: i64 },
 }
 
 pub fn send_msg(stream: &mut TcpStream, msg: &Message) -> std::io::Result<()> {

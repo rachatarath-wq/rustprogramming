@@ -498,6 +498,8 @@ async fn main() {
     // ตำแหน่งผู้เล่นคนอื่น (ชื่อ -> ตำแหน่ง) อัปเดตจากเทรดรับข้อมูล
     let other_players: Arc<Mutex<HashMap<String, Vec3>>> = Arc::new(Mutex::new(HashMap::new()));
     let chat_log: Arc<Mutex<Vec<(String, String)>>> = Arc::new(Mutex::new(Vec::new()));
+    let coins_shared: Arc<Mutex<i64>> = Arc::new(Mutex::new(0));
+    let pending_breaks: Arc<Mutex<Vec<(i32, i32, i32)>>> = Arc::new(Mutex::new(Vec::new()));
     let mut thai = thai_text::ThaiText::new();
     let mut chat_open = false;
     let mut chat_input = String::new();
@@ -510,6 +512,8 @@ async fn main() {
             if let Ok(mut recv) = stream.try_clone() {
                 let other_players = Arc::clone(&other_players);
                 let chat_log = Arc::clone(&chat_log);
+                let coins_shared = Arc::clone(&coins_shared);
+                let pending_breaks = Arc::clone(&pending_breaks);
                 std::thread::spawn(move || loop {
                     match net::recv_msg(&mut recv) {
                         Ok(net::Message::Move { name, x, y, z }) => {
@@ -521,6 +525,12 @@ async fn main() {
                             if log.len() > 20 {
                                 log.remove(0);
                             }
+                        }
+                        Ok(net::Message::Coins { coins }) => {
+                            *coins_shared.lock().unwrap() = coins;
+                        }
+                        Ok(net::Message::BlockBreak { x, y, z, .. }) => {
+                            pending_breaks.lock().unwrap().push((x, y, z));
                         }
                         Ok(_) => {}
                         Err(_) => break,
@@ -1471,6 +1481,14 @@ async fn main() {
             draw_cube(rot(0.15, -0.5, -swing), vec3(0.2, 0.5, 0.2), None, pants);
         }
 
+        // นำบล็อกที่ผู้เล่นคนอื่นทุบออกจากโลก (sync จากเซิร์ฟเวอร์)
+        {
+            let mut pending = pending_breaks.lock().unwrap();
+            for (bx, by, bz) in pending.drain(..) {
+                world.remove(&(bx, by, bz));
+            }
+        }
+
         // ทุบ/วางบล็อก
         if let Some((hit, normal)) = raycast(cam_pos, forward, &world, REACH) {
             let hp_pos = vec3(hit.0 as f32 + 0.5, hit.1 as f32 + 0.5, hit.2 as f32 + 0.5);
@@ -1479,6 +1497,18 @@ async fn main() {
             if (mouse_grabbed && is_mouse_button_pressed(MouseButton::Left)) || gp_break {
                 let col = world.get(&hit).map(|b| b.color()).unwrap_or(GRAY);
                 world.remove(&hit);
+                // แจ้งเซิร์ฟเวอร์ว่าเราทุบบล็อกนี้ (ได้เหรียญ + sync ให้คนอื่น)
+                if let Some(stream) = net_stream.as_mut() {
+                    let _ = net::send_msg(
+                        stream,
+                        &net::Message::BlockBreak {
+                            name: String::new(),
+                            x: hit.0,
+                            y: hit.1,
+                            z: hit.2,
+                        },
+                    );
+                }
                 play(&snd_break);
                 for _ in 0..12 {
                     particles.push(Particle {
@@ -1520,6 +1550,10 @@ async fn main() {
 
         // --- HUD ---
         draw_text("WASD: walk | Space: jump | LMB: hit/break | RMB: place | E: eat | V: view | T: home | P: auto | M: train | Esc: mouse | F10: quit", 20.0, 30.0, 22.0, WHITE);
+
+        // ยอดเหรียญ (อัปเดตจากเซิร์ฟเวอร์)
+        let coins = *coins_shared.lock().unwrap();
+        thai.draw(&format!("เหรียญ: {}", coins), screen_width() - 170.0, 30.0, 18.0, GOLD);
 
         // --- แชท (log + input) ---
         {

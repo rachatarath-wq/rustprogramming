@@ -314,6 +314,7 @@ dependencies = [
  "bincode",
  "rusqlite",
  "serde",
+ "serde_json",
  "tiny_http",
  "ureq",
 ]

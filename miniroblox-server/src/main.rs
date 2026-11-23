@@ -84,14 +84,18 @@ fn handle(
                         break;
                     }
                 };
-                let conn = db.lock().unwrap();
-                db::save_player(&conn, &email, 0.0, 0.0, 0.0);
+                let coins = {
+                    let conn = db.lock().unwrap();
+                    db::save_player(&conn, &email, 0.0, 0.0, 0.0);
+                    db::get_coins(&conn, &email)
+                };
                 let blocks = world.lock().unwrap().clone();
                 let n = blocks.len();
                 let _ = send_msg(&mut stream, &Message::World { blocks });
+                let _ = send_msg(&mut stream, &Message::Coins { coins });
                 clients.lock().unwrap().insert(email.clone(), stream.try_clone().unwrap());
                 my_name = Some(email.clone());
-                println!("{} logged in, sent {} blocks", email, n);
+                println!("{} logged in, sent {} blocks ({} coins)", email, n, coins);
             }
             // Movement: overwrite the name with the verified identity (anti-spoofing)
             // then broadcast to everyone EXCEPT the sender.
@@ -118,6 +122,27 @@ fn handle(
                 let mut guard = clients.lock().unwrap();
                 for c in guard.values_mut() {
                     let _ = send_msg(c, &out);
+                }
+            }
+            // Break a block: authoritative removal + reward 1 coin, then tell everyone.
+            Message::BlockBreak { name: _, x, y, z } => {
+                let name = my_name.clone().unwrap_or_default();
+                world
+                    .lock()
+                    .unwrap()
+                    .retain(|b| !(b.x == *x && b.y == *y && b.z == *z));
+                let coins = {
+                    let conn = db.lock().unwrap();
+                    db::delete_block(&conn, *x, *y, *z);
+                    db::add_coins(&conn, &name, 1)
+                };
+                let _ = send_msg(&mut stream, &Message::Coins { coins });
+                let out = Message::BlockBreak { name: name.clone(), x: *x, y: *y, z: *z };
+                let mut guard = clients.lock().unwrap();
+                for (n, c) in guard.iter_mut() {
+                    if Some(n) != Some(&name) {
+                        let _ = send_msg(c, &out);
+                    }
                 }
             }
             _ => {}
