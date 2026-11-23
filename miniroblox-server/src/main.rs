@@ -1,4 +1,5 @@
-// ep47: server broadcasts player positions so clients can see each other.
+// ep48: Google login — server verifies the ID token and uses the verified email.
+use miniroblox_server::auth;
 use miniroblox_server::db;
 use miniroblox_server::{recv_msg, send_msg, Block, Message};
 use std::collections::HashMap;
@@ -65,23 +66,37 @@ fn handle(
         println!("got: {:?}", msg);
 
         match &msg {
-            // A new player: save to DB, send the world, and register them.
-            Message::Join { name } => {
+            // Login with an OAuth authorization code -> exchange + verify.
+            Message::Login { code } => {
+                let email = match auth::login_with_code(code) {
+                    Some(e) => e,
+                    None => {
+                        eprintln!("login rejected: invalid code");
+                        break;
+                    }
+                };
                 let conn = db.lock().unwrap();
-                db::save_player(&conn, name, 0.0, 0.0, 0.0);
+                db::save_player(&conn, &email, 0.0, 0.0, 0.0);
                 let blocks = world.lock().unwrap().clone();
                 let n = blocks.len();
                 let _ = send_msg(&mut stream, &Message::World { blocks });
-                clients.lock().unwrap().insert(name.clone(), stream.try_clone().unwrap());
-                my_name = Some(name.clone());
-                println!("{} joined, sent {} blocks", name, n);
+                clients.lock().unwrap().insert(email.clone(), stream.try_clone().unwrap());
+                my_name = Some(email.clone());
+                println!("{} logged in, sent {} blocks", email, n);
             }
-            // Movement: broadcast to everyone EXCEPT the sender.
-            Message::Move { .. } => {
+            // Movement: overwrite the name with the verified identity (anti-spoofing)
+            // then broadcast to everyone EXCEPT the sender.
+            Message::Move { name: _, x, y, z } => {
+                let out = Message::Move {
+                    name: my_name.clone().unwrap_or_default(),
+                    x: *x,
+                    y: *y,
+                    z: *z,
+                };
                 let mut guard = clients.lock().unwrap();
                 for (name, c) in guard.iter_mut() {
                     if Some(name) != my_name.as_ref() {
-                        let _ = send_msg(c, &msg);
+                        let _ = send_msg(c, &out);
                     }
                 }
             }

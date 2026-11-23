@@ -7,7 +7,7 @@ fn main() {
     let name = std::env::args().nth(1).unwrap_or_else(|| "p1".into());
     let addr = std::env::var("SERVER").unwrap_or_else(|_| "127.0.0.1:7777".into());
     let mut stream = TcpStream::connect(&addr).unwrap();
-    send_msg(&mut stream, &Message::Join { name: name.clone() }).unwrap();
+    send_msg(&mut stream, &Message::Login { code: format!("dev:{}", name) }).unwrap();
     match recv_msg(&mut stream).unwrap() {
         Message::World { blocks } => println!("{} got world: {} blocks", name, blocks.len()),
         other => println!("{} unexpected: {:?}", name, other),

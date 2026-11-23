@@ -4,6 +4,7 @@ use std::io::{Read, Write};
 use std::net::TcpStream;
 
 pub mod db;
+pub mod auth;
 
 // One block in the world.
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -17,7 +18,7 @@ pub struct Block {
 // Messages exchanged between client and server.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Message {
-    Join { name: String },
+    Login { code: String },
     Move { name: String, x: f32, y: f32, z: f32 },
     World { blocks: Vec<Block> },
 }

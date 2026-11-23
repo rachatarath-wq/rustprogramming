@@ -490,13 +490,13 @@ async fn main() {
     }
     println!("โลก {} บล็อก (สุ่ม seed {}) +{:.1}s", world.len(), seed, t0.elapsed().as_secs_f32());
 
-    // --- เชื่อมต่อเซิร์ฟเวอร์ (ถ้าเปิดอยู่) + โหลดโลกจากเซิร์ฟเวอร์ ---
-    let my_name = format!("player{}", std::process::id());
+    // --- เชื่อมต่อเซิร์ฟเวอร์ (Google login) + โหลดโลกจากเซิร์ฟเวอร์ ---
+    let server_addr = std::env::var("SERVER").unwrap_or_else(|_| "127.0.0.1:7777".into());
     let mut net_stream: Option<std::net::TcpStream> = None;
     let mut net_move_timer: f32 = 0.0;
     // ตำแหน่งผู้เล่นคนอื่น (ชื่อ -> ตำแหน่ง) อัปเดตจากเทรดรับข้อมูล
     let other_players: Arc<Mutex<HashMap<String, Vec3>>> = Arc::new(Mutex::new(HashMap::new()));
-    match net::connect_and_join("127.0.0.1:7777", &my_name) {
+    match net::connect_with_google_login(&server_addr) {
         Some((stream, blocks)) => {
             for b in &blocks {
                 world.insert((b.x, b.y, b.z), block_from_u8(b.block));
@@ -504,13 +504,10 @@ async fn main() {
             // โคลน stream ไว้ให้เทรดรับข้อมูล (ตัวหลักใช้ส่งตำแหน่ง)
             if let Ok(mut recv) = stream.try_clone() {
                 let other_players = Arc::clone(&other_players);
-                let my_name = my_name.clone();
                 std::thread::spawn(move || loop {
                     match net::recv_msg(&mut recv) {
                         Ok(net::Message::Move { name, x, y, z }) => {
-                            if name != my_name {
-                                other_players.lock().unwrap().insert(name, vec3(x, y, z));
-                            }
+                            other_players.lock().unwrap().insert(name, vec3(x, y, z));
                         }
                         Ok(_) => {}
                         Err(_) => break,
@@ -518,10 +515,10 @@ async fn main() {
                 });
             }
             net_stream = Some(stream);
-            println!("เชื่อมต่อเซิร์ฟเวอร์แล้ว: ได้รับ {} บล็อก +{:.1}s", blocks.len(), t0.elapsed().as_secs_f32());
+            println!("ล็อกอินเซิร์ฟเวอร์สำเร็จ: ได้รับ {} บล็อก +{:.1}s", blocks.len(), t0.elapsed().as_secs_f32());
         }
         None => {
-            println!("(ไม่พบเซิร์ฟเวอร์ที่ 127.0.0.1:7777 — เล่นแบบเดี่ยว) +{:.1}s", t0.elapsed().as_secs_f32());
+            println!("(ไม่ได้ล็อกอินเซิร์ฟเวอร์ — เล่นแบบเดี่ยว) +{:.1}s", t0.elapsed().as_secs_f32());
         }
     }
 
@@ -670,7 +667,7 @@ async fn main() {
             if net_move_timer <= 0.0 {
                 net_move_timer = 0.5;
                 let _ = net::send_msg(stream, &net::Message::Move {
-                    name: my_name.clone(), x: cam_pos.x, y: cam_pos.y, z: cam_pos.z,
+                    name: String::new(), x: cam_pos.x, y: cam_pos.y, z: cam_pos.z,
                 });
             }
         }
