@@ -4,6 +4,8 @@ use gilrs::{Axis, Button, Gilrs};
 use std::collections::HashMap;
 use std::fs;
 
+mod net;
+
 // ตำแหน่งของบล็อกในโลก = พิกัดจำนวนเต็ม (x, y, z)
 type BlockPos = (i32, i32, i32);
 
@@ -33,6 +35,14 @@ fn block_prev(b: Block) -> Block {
         Block::Grass => Block::Snow, Block::Snow => Block::Brick, Block::Brick => Block::Glass,
         Block::Glass => Block::Sand, Block::Sand => Block::Wood, Block::Wood => Block::Stone,
         Block::Stone => Block::Dirt, Block::Dirt => Block::Grass,
+    }
+}
+
+// แปลงตัวเลขจากเซิร์ฟเวอร์ (u8) กลับเป็นบล็อกของเกม
+fn block_from_u8(b: u8) -> Block {
+    match b {
+        0 => Block::Grass, 1 => Block::Dirt, 2 => Block::Stone, 3 => Block::Wood,
+        4 => Block::Sand, 5 => Block::Glass, 6 => Block::Brick, _ => Block::Snow,
     }
 }
 
@@ -479,6 +489,22 @@ async fn main() {
     }
     println!("โลก {} บล็อก (สุ่ม seed {}) +{:.1}s", world.len(), seed, t0.elapsed().as_secs_f32());
 
+    // --- เชื่อมต่อเซิร์ฟเวอร์ (ถ้าเปิดอยู่) + โหลดโลกจากเซิร์ฟเวอร์ ---
+    let mut net_stream: Option<std::net::TcpStream> = None;
+    let mut net_move_timer: f32 = 0.0;
+    match net::connect_and_join("127.0.0.1:7777", "player1") {
+        Some((stream, blocks)) => {
+            for b in &blocks {
+                world.insert((b.x, b.y, b.z), block_from_u8(b.block));
+            }
+            net_stream = Some(stream);
+            println!("เชื่อมต่อเซิร์ฟเวอร์แล้ว: ได้รับ {} บล็อก +{:.1}s", blocks.len(), t0.elapsed().as_secs_f32());
+        }
+        None => {
+            println!("(ไม่พบเซิร์ฟเวอร์ที่ 127.0.0.1:7777 — เล่นแบบเดี่ยว) +{:.1}s", t0.elapsed().as_secs_f32());
+        }
+    }
+
     // วอร์ม shader/ไปป์ไลน์ทั้งหมดล่วงหน้า — compile ตอนจอโหลด ไม่ให้เฟรมแรกค้าง
     // (สำคัญมากบนเครื่องที่ render ด้วย software/llvmpipe: JIT ครั้งแรกนานมาก)
     draw_loading(0.75, "Compiling shaders...");
@@ -617,6 +643,17 @@ async fn main() {
 
     loop {
         let dt = get_frame_time();
+
+        // ส่งตำแหน่งผู้เล่นให้เซิร์ฟเวอร์ทุก 0.5s (ถ้าเชื่อมต่ออยู่)
+        if let Some(stream) = net_stream.as_mut() {
+            net_move_timer -= dt;
+            if net_move_timer <= 0.0 {
+                net_move_timer = 0.5;
+                let _ = net::send_msg(stream, &net::Message::Move {
+                    x: cam_pos.x, y: cam_pos.y, z: cam_pos.z,
+                });
+            }
+        }
 
         // --- เพลงแบ็กกราวด์: วนลูปแบบ manual ทุก 8s (กันปัญหา loop ของ audio backend) ---
         bgm_timer += dt;
