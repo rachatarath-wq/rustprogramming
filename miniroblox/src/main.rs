@@ -1187,7 +1187,7 @@ async fn main() {
         if is_key_pressed(KeyCode::R) {
             save_world(&world, SAVE_FILE);
         }
-        if is_key_pressed(KeyCode::T) {
+        if is_key_pressed(KeyCode::H) {
             cam_pos = spawn_pos;
             vel = Vec3::ZERO;
             grounded = false;
@@ -1686,7 +1686,7 @@ async fn main() {
         }
 
         // --- HUD ---
-        draw_text("WASD: walk | Space: jump | LMB: hit/break | RMB: place | E: eat | V: view | T: home | P: auto | M: train | C: color | Esc: mouse | F10: quit", 20.0, 30.0, 22.0, WHITE);
+        draw_text("WASD: walk | Space: jump | LMB: hit/break | RMB: place | E: eat | V: view | H: home | P: auto | M: train | C: color | T: chat | Esc: mouse | F10: quit", 20.0, 30.0, 22.0, WHITE);
 
         // ยอดเหรียญ (อัปเดตจากเซิร์ฟเวอร์) — วางใต้เรดาร์มุมขวาบน ไม่ให้ทับกัน
         let coins = *coins_shared.lock().unwrap();
