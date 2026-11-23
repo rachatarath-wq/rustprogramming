@@ -102,17 +102,24 @@ pub fn run(
                 let _ = request.respond(redirect(&google_auth_url()));
             }
             ("/oauth2callback", _) => {
-                match query_param(&query, "code") {
-                    Some(c) => match crate::auth::login_with_code_web(&c, WEB_REDIRECT) {
-                        Some(email) => {
-                            let tok = new_token();
-                            sessions.lock().unwrap().insert(tok.clone(), email);
-                            let _ = request.respond(redirect_with_cookie("/", &tok));
+                match query_param(&query, "code").map(|c| percent_decode(&c)) {
+                    Some(c) => {
+                        eprintln!(
+                            "[web] oauth code len={} head={}",
+                            c.len(),
+                            &c[..c.len().min(14)]
+                        );
+                        match crate::auth::login_with_code_web(&c, WEB_REDIRECT) {
+                            Some(email) => {
+                                let tok = new_token();
+                                sessions.lock().unwrap().insert(tok.clone(), email);
+                                let _ = request.respond(redirect_with_cookie("/", &tok));
+                            }
+                            None => {
+                                let _ = request.respond(html_response("login failed".to_string()));
+                            }
                         }
-                        None => {
-                            let _ = request.respond(html_response("login failed".to_string()));
-                        }
-                    },
+                    }
                     None => {
                         let _ = request.respond(redirect("/login"));
                     }
@@ -262,6 +269,33 @@ fn query_param(query: &str, name: &str) -> Option<String> {
         }
     }
     None
+}
+
+fn percent_decode(s: &str) -> String {
+    let bytes = s.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let (Some(h), Some(l)) = (hex_val(bytes[i + 1]), hex_val(bytes[i + 2])) {
+                out.push(h * 16 + l);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).to_string()
+}
+
+fn hex_val(b: u8) -> Option<u8> {
+    match b {
+        b'0'..=b'9' => Some(b - b'0'),
+        b'a'..=b'f' => Some(b - b'a' + 10),
+        b'A'..=b'F' => Some(b - b'A' + 10),
+        _ => None,
+    }
 }
 
 fn google_auth_url() -> String {
