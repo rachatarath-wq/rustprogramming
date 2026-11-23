@@ -32,7 +32,42 @@ pub fn init() -> Connection {
         [],
     )
     .expect("create blocks table failed");
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS roles (
+            email TEXT PRIMARY KEY,
+            role TEXT NOT NULL DEFAULT 'user'
+        )",
+        [],
+    )
+    .expect("create roles table failed");
     conn
+}
+
+// --- roles: access level per admin-web user ---
+pub fn get_role(conn: &Connection, email: &str) -> String {
+    conn.query_row(
+        "SELECT role FROM roles WHERE email = ?1",
+        params![email],
+        |r| r.get(0),
+    )
+    .unwrap_or_else(|_| "user".to_string())
+}
+
+pub fn set_role(conn: &Connection, email: &str, role: &str) {
+    conn.execute(
+        "INSERT INTO roles (email, role) VALUES (?1, ?2)
+         ON CONFLICT(email) DO UPDATE SET role=?2",
+        params![email, role],
+    )
+    .expect("set role failed");
+}
+
+pub fn list_roles(conn: &Connection) -> Vec<(String, String)> {
+    let mut stmt = conn.prepare("SELECT email, role FROM roles").unwrap();
+    let rows = stmt
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+        .unwrap();
+    rows.filter_map(|r| r.ok()).collect()
 }
 
 // Save (or update) one player's last position (and ensure they have a coin row).

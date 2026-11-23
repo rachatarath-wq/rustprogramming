@@ -19,7 +19,12 @@ struct TokenInfo {
 }
 
 // Full login: exchange code -> id_token -> verify -> email.
+// (game uses the loopback redirect; the admin web passes its own redirect)
 pub fn login_with_code(code: &str) -> Option<String> {
+    login_with_code_redirect(code, REDIRECT_URI)
+}
+
+pub fn login_with_code_redirect(code: &str, redirect_uri: &str) -> Option<String> {
     // Dev mode (DEV=1): "dev:name" bypasses Google — for local testing only.
     if std::env::var("DEV").map(|v| v == "1").unwrap_or(false) {
         if let Some(name) = code.strip_prefix("dev:") {
@@ -33,7 +38,7 @@ pub fn login_with_code(code: &str) -> Option<String> {
             ("code", code),
             ("client_id", GOOGLE_CLIENT_ID),
             ("client_secret", secret.as_str()),
-            ("redirect_uri", REDIRECT_URI),
+            ("redirect_uri", redirect_uri),
             ("grant_type", "authorization_code"),
         ])
         .ok()?;

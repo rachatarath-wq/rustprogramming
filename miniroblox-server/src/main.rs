@@ -48,7 +48,8 @@ fn main() {
         let c = Arc::clone(&clients);
         let w = Arc::clone(&world);
         let d = Arc::clone(&db);
-        thread::spawn(move || miniroblox_server::web::run(admin_port, c, w, d));
+        let oe = owner_email.clone();
+        thread::spawn(move || miniroblox_server::web::run(admin_port, c, w, d, oe));
     }
 
     for incoming in listener.incoming() {
