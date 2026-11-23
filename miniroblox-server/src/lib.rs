@@ -5,6 +5,7 @@ use std::net::TcpStream;
 
 pub mod db;
 pub mod auth;
+pub mod web;
 
 // One block in the world.
 #[derive(Serialize, Deserialize, Debug, Clone)]

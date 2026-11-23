@@ -8,3 +8,4 @@ serde = { version = "1", features = ["derive"] }
 bincode = "1"
 rusqlite = { version = "0.31", features = ["bundled"] }
 ureq = { version = "2", features = ["json"] }
+tiny_http = "0.12"

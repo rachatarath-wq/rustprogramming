@@ -36,6 +36,15 @@ fn main() {
 
     let clients: Clients = Arc::new(Mutex::new(HashMap::new()));
 
+    // Admin web UI on a separate port (read-only status page).
+    let admin_port: u16 = std::env::var("ADMIN_PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(8080);
+    {
+        let c = Arc::clone(&clients);
+        let w = Arc::clone(&world);
+        let d = Arc::clone(&db);
+        thread::spawn(move || miniroblox_server::web::run(admin_port, c, w, d));
+    }
+
     for incoming in listener.incoming() {
         let stream = match incoming {
             Ok(s) => s,
