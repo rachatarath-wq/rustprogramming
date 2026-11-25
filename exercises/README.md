@@ -23,6 +23,7 @@
 ## รายการแบบฝึกหัด
 | โฟลเดอร์ | บทเรียน |
 |----------|---------|
+| ep02-hello-world | ตอนที่ 2: โปรแกรมแรก |
 | ep03-variables | ตอนที่ 3: ตัวแปรและประเภทข้อมูล |
 | ep04-ownership | ตอนที่ 4: Ownership |
 | ep05-borrowing | ตอนที่ 5: Borrowing และ References |
@@ -34,3 +35,8 @@
 | ep11-modules | ตอนที่ 11: modules |
 | ep12-error-handling | ตอนที่ 12: error handling (Result) |
 | ep13-testing | ตอนที่ 13: การเขียน test |
+| ep14-serde-json | ตอนที่ 14: serde/JSON |
+| ep15-task-model | ตอนที่ 15: ออกแบบ data model (Task) |
+| ep16-task-add-list | ตอนที่ 16: add/list |
+| ep17-task-done | ตอนที่ 17: done (ทำเครื่องหมายเสร็จ) |
+| ep18-task-export | ตอนที่ 18: export JSON |
