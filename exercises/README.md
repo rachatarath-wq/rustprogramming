@@ -26,5 +26,11 @@
 | ep03-variables | ตอนที่ 3: ตัวแปรและประเภทข้อมูล |
 | ep04-ownership | ตอนที่ 4: Ownership |
 | ep05-borrowing | ตอนที่ 5: Borrowing และ References |
-
-(เพิ่มต่อเนื่องตามบทเรียน)
+| ep06-functions | ตอนที่ 6: ฟังก์ชัน |
+| ep07-control-flow | ตอนที่ 7: if/else และ match |
+| ep08-loops | ตอนที่ 8: ลูป (loop/while/for) |
+| ep09-struct | ตอนที่ 9: struct + method |
+| ep10-generics | ตอนที่ 10: generics + trait |
+| ep11-modules | ตอนที่ 11: modules |
+| ep12-error-handling | ตอนที่ 12: error handling (Result) |
+| ep13-testing | ตอนที่ 13: การเขียน test |
